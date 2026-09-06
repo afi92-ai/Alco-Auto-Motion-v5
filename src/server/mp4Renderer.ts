@@ -14,6 +14,13 @@ import { runVisualDesignAudit } from '../engine/visualDesignAudit';
 import { validateCreativePerformance } from '../engine/creativeValidator';
 import { checkHookFontResolved } from './fontResolver';
 import { reconcileScenesToSourceDuration, SceneReconciliationResult } from '../utils/sceneDurationReconciler';
+import {
+  resolveCaptionAdaptivePosition,
+  getCaptionPositionMetrics,
+  calculateCaptionFontSize,
+  getHighlightColorCategory,
+  classifyMarketingToken,
+} from '../engine/captionEngine';
 
 const execFileAsync = promisify(execFile);
 
@@ -386,8 +393,14 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Bricolage Grotesque,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
-Style: Hook,Anton,44,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.2,1.8,2,30,30,215,1
-Style: Highlight,Sora,42,&H0000E5FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
+Style: Hook,Anton,44,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.2,1.8,2,30,30,205,1
+Style: Highlight,Sora,40,&H0000E5FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
+Style: Caption_Lower,Bricolage Grotesque,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
+Style: Caption_CenterLow,Bricolage Grotesque,38,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,360,1
+Style: Caption_UpperLow,Bricolage Grotesque,36,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,510,1
+Style: Caption_Hook,Anton,44,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.2,1.8,2,30,30,205,1
+Style: Caption_Proof,Sora,36,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
+Style: Caption_CTA,Bricolage Grotesque,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.0,1.6,2,30,30,205,1
 Style: UpperHeadline_CleanCreator,${cfgCleanCreator.assFontName},${cfgCleanCreator.fontSize.assPt},${cfgCleanCreator.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgCleanCreator.strokeAss.outline},${cfgCleanCreator.strokeAss.shadow},8,48,48,130,1
 Style: UpperHeadlineFaceProtected_CleanCreator,${cfgCleanCreator.assFontName},${cfgCleanCreator.fontSize.assPtFaceProtected},${cfgCleanCreator.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgCleanCreator.strokeAss.outline},${cfgCleanCreator.strokeAss.shadow},8,48,48,260,1
 Style: UpperHeadline_FastTikTok,${cfgFastTikTok.assFontName},${cfgFastTikTok.fontSize.assPt},${cfgFastTikTok.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgFastTikTok.strokeAss.outline},${cfgFastTikTok.strokeAss.shadow},8,48,48,130,1
@@ -500,11 +513,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       }
     }
 
-    // 2. Lower-Third Bottom Subtitles (1-2 lines per chunk, 4-7 words max)
-    const styleName = isHook ? 'Hook' : (scene.caption_style === 'highlight' ? 'Highlight' : 'Default');
-
+    // 2. Adaptive Subtitles (1-2 lines per chunk, 3-5 words max, Step 9.2 Intelligence)
     const rawCaption = sanitizeCaptionText(scene.caption || '').trim();
     if (!rawCaption) return;
+
+    const hasUpperHead = shouldRenderUpperHeadline(scene);
+    const hasEvidence = Boolean(scene.visual_evidence);
+    const hasBrollMedia = Boolean(scene.broll);
+    const adaptivePosition = scene.caption_adaptive_position || resolveCaptionAdaptivePosition(scene, hasUpperHead, hasEvidence, hasBrollMedia);
+
+    // Style resolution based on adaptive position & scene role
+    const posNorm = String(adaptivePosition || 'LOWER').toUpperCase();
+    let styleName = 'Caption_Lower';
+    if (posNorm.includes('CENTER')) {
+      styleName = 'Caption_CenterLow';
+    } else if (posNorm.includes('UPPER')) {
+      styleName = 'Caption_UpperLow';
+    } else if (isHook) {
+      styleName = 'Caption_Hook';
+    } else if (scene.caption_display_mode === 'proof_badge' || isProof) {
+      styleName = 'Caption_Proof';
+    } else if (scene.caption_display_mode === 'cta_emphasis' || isCTA) {
+      styleName = 'Caption_CTA';
+    }
 
     const chunks = splitCaptionIntoChunks(rawCaption, start, end);
     const highlights = (scene.highlight_words || []).map(h => h.toLowerCase().trim()).filter(Boolean);
@@ -516,14 +547,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       chunk.rawWords.forEach((word) => {
         if (highlightedCount >= 3) return;
         const cleanWord = word.replace(/[^a-zA-Z0-9%]/g, '').toLowerCase();
-        const isMetric = /\d+|%|roas|omset|cpa|ctr|juta|ribu|kali|gratis/i.test(word);
+        const roleForClassify = (scene.role || (isHook ? 'hook' : 'explanation')) as any;
+        const cat = classifyMarketingToken(word, roleForClassify);
         const isMatched = highlights.some(hw => hw.includes(cleanWord) || cleanWord.includes(hw));
 
-        if (isMetric || isMatched) {
+        if (isMatched || cat !== 'general') {
           const regex = new RegExp(`\\b(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i');
-          const highlightColor = isHook ? '{\\c&H0000FFFF&}{\\b1}' : '{\\c&H0024B6F7&}{\\b1}';
+          const colorInfo = getHighlightColorCategory(cat, isHook);
+          const highlightAss = `{\\c${colorInfo.assColorCode}}{\\b1}`;
           if (regex.test(assText)) {
-            assText = assText.replace(regex, `${highlightColor}$1{\\b0}{\\c&H00FFFFFF&}`);
+            assText = assText.replace(regex, `${highlightAss}$1{\\b0}{\\c&H00FFFFFF&}`);
             highlightedCount++;
           }
         }

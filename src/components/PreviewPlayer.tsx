@@ -4,7 +4,16 @@ import { SceneEditPlan, ContentType } from '../types';
 import { playSoundEffect } from '../utils/audioEffects';
 import { SFX_CONFIGS, INTERNAL_LAYER_CONFIGS } from '../utils/sharedMediaMapping';
 import { getPublicHeadline, resolveHookStyle, resolveHookLayout, getHookFontConfig, shouldRenderUpperHeadline, shouldRenderInternalLayer } from '../utils/headlineSanitizer';
-import { getActiveWordIndex, determineCaptionDisplayMode, calculateCaptionLineWrapping, getActiveCaptionChunk } from '../engine/captionEngine';
+import {
+  getActiveWordIndex,
+  determineCaptionDisplayMode,
+  calculateCaptionLineWrapping,
+  getActiveCaptionChunk,
+  resolveCaptionAdaptivePosition,
+  getCaptionPositionMetrics,
+  calculateCaptionFontSize,
+  getHighlightColorCategory,
+} from '../engine/captionEngine';
 import { getFaceSafeOverlayPlacement } from '../engine/talkingHeadDirector';
 import { TALKING_HEAD_MOTION_CONFIG, resolveTalkingHeadMotionProfile, clampScale } from '../config/talkingHeadMotionConfig';
 import { getStyleProfile } from '../engine/styleProfiles';
@@ -672,7 +681,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
       );
     };
 
-  // Render Real-Time Dynamic Short Video Captions (Face-Safe, Max 2 Lines, Lower Third Safe Zone)
+  // Render Real-Time Dynamic Short Video Captions (Face-Safe, Max 2 Lines, Adaptive Safe Zone)
   const renderActiveCaptions = () => {
     if (viewMode === 'raw' || !currentScene?.caption) return null;
 
@@ -684,12 +693,9 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
     const text = currentScene.caption;
     const grammar = currentScene.caption_grammar || 'KEYWORD_EMPHASIS';
     const role = currentScene.role || 'explanation';
+    const intensity = currentScene.editing_intensity || 'MEDIUM';
 
     const displayMode = currentScene.caption_display_mode || determineCaptionDisplayMode(role, grammar, currentScene.visual_evidence?.type, activeSceneIndex);
-    const isTalkingHead = currentScene.talking_head_framing?.is_talking_head !== false;
-
-    // Face Safe Overlay Resolver: Guarantees overlay bounds do not collide with speaker face (Y: 18%-54%)
-    const safeOverlay = getFaceSafeOverlayPlacement(isTalkingHead, displayMode, currentScene.visual_evidence?.type);
 
     // Dynamic Time-Chunking: Returns active 3-5 word page (wrapped in max 2 lines, 2-3 words per line)
     const { activeChunk, activeWordIdx } = getActiveCaptionChunk(
@@ -702,25 +708,34 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
 
     const wrappedLines = activeChunk.wrappedLines;
 
-    let containerPos = safeOverlay.captionPosClass;
+    // Step 9.2: Adaptive Positioning & Collision Avoidance
+    const hasUpperHead = shouldRenderUpperHeadline(currentScene);
+    const hasEvidence = Boolean(currentScene.visual_evidence);
+    const hasBrollMedia = Boolean(currentScene.broll);
+    const adaptivePosition = currentScene.caption_adaptive_position || resolveCaptionAdaptivePosition(currentScene, hasUpperHead, hasEvidence, hasBrollMedia);
+    const posMetrics = getCaptionPositionMetrics(adaptivePosition);
+
+    // Step 9.2: Typography Rule & Font Size Intelligence
+    const fontMetrics = calculateCaptionFontSize(
+      text,
+      wrappedLines.length,
+      intensity,
+      displayMode
+    );
+
+    let containerPos = posMetrics.posClass;
     let containerStyle = 'bg-transparent text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_12px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
-    let fontFamilyClass = "font-['Bricolage_Grotesque',sans-serif] tracking-tight text-sm sm:text-base font-extrabold uppercase";
+    let fontFamily = fontMetrics.fontFamily;
     let activeWordStyle = 'scale-105 text-amber-300 font-black inline-block drop-shadow-[0_0_14px_rgba(251,191,36,1)] z-20';
-    let defaultHighlightClass = 'text-amber-300 font-black drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]';
 
     if (displayMode === 'hook_headline') {
-      fontFamilyClass = "font-['Anton',sans-serif] tracking-wider text-base sm:text-lg uppercase font-black";
       containerStyle = 'bg-transparent max-w-[92%] mx-auto text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_14px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
       activeWordStyle = 'scale-105 text-amber-300 font-black inline-block drop-shadow-[0_0_14px_rgba(251,191,36,1)] z-20';
-      defaultHighlightClass = 'text-amber-300 font-black drop-shadow-[0_0_10px_rgba(251,191,36,0.9)]';
     } else if (displayMode === 'proof_badge') {
       containerStyle = 'bg-transparent max-w-[88%] mx-auto text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_12px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
-      fontFamilyClass = "font-['Sora',sans-serif] tracking-tight text-xs sm:text-sm font-extrabold uppercase";
       activeWordStyle = 'scale-105 text-cyan-300 font-black inline-block drop-shadow-[0_0_14px_rgba(34,211,238,1)] z-20';
-      defaultHighlightClass = 'text-cyan-300 font-black drop-shadow-[0_0_10px_rgba(34,211,238,0.9)]';
     } else if (displayMode === 'cta_emphasis') {
       containerStyle = 'bg-transparent max-w-[88%] mx-auto text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_12px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
-      fontFamilyClass = "font-['Bricolage_Grotesque',sans-serif] tracking-wide text-xs sm:text-sm font-black uppercase";
       activeWordStyle = 'scale-105 text-amber-300 font-black inline-block drop-shadow-[0_0_14px_rgba(251,191,36,1)] z-20';
     }
 
@@ -735,7 +750,13 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
         className={`absolute ${typeof customPosY === 'number' && customPosY > 0 ? '' : containerPos} flex flex-col items-center justify-center text-center pointer-events-none z-30 transition-all duration-200`}
       >
         <div className={`px-2 py-1 max-w-[96%] ${containerStyle}`}>
-          <div className={`leading-snug text-white flex flex-col items-center justify-center space-y-1.5 ${fontFamilyClass}`}>
+          <div
+            className={`leading-snug text-white flex flex-col items-center justify-center space-y-1.5 ${fontMetrics.fontWeight} ${fontMetrics.tracking}`}
+            style={{
+              fontFamily,
+              fontSize: `${fontMetrics.previewPx}px`,
+            }}
+          >
             {wrappedLines.map((line) => (
               <div key={line.lineIndex} className="flex flex-wrap justify-center items-center gap-1.5">
                 {line.words.map((wObj) => {
@@ -745,18 +766,8 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
                   const isHighlight = Boolean(wt?.isHighlight);
                   const isCurrentlySpoken = i === activeWordIdx;
                   const cat = wt?.marketingCategory || 'general';
-                  const isMetricNumber = /\d+|%|X|RP|USD|JUTA|OMSET|ROAS/i.test(word);
 
-                  let highlightClass = defaultHighlightClass;
-                  if (cat === 'problem') {
-                    highlightClass = 'text-rose-400 font-black underline decoration-rose-500 decoration-2 drop-shadow-[0_0_10px_rgba(244,63,94,0.9)]';
-                  } else if (cat === 'benefit_result' || isMetricNumber) {
-                    highlightClass = 'text-amber-300 font-black drop-shadow-[0_0_12px_rgba(251,191,36,1)]';
-                  } else if (cat === 'urgency_cta') {
-                    highlightClass = 'text-cyan-300 font-black underline decoration-cyan-400 decoration-2 drop-shadow-[0_0_10px_rgba(103,232,249,0.9)]';
-                  } else if (cat === 'offer_mechanism') {
-                    highlightClass = 'text-emerald-300 font-black underline decoration-emerald-400 decoration-2 drop-shadow-[0_0_10px_rgba(52,211,153,0.9)]';
-                  }
+                  const colorInfo = getHighlightColorCategory(cat, displayMode === 'hook_headline');
 
                   return (
                     <span
@@ -765,7 +776,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
                         isCurrentlySpoken
                           ? activeWordStyle
                           : isHighlight
-                          ? highlightClass
+                          ? colorInfo.previewClass
                           : 'text-slate-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-0.5'
                       }`}
                     >

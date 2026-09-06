@@ -17,6 +17,12 @@ import {
 import { SFX_PURPOSE_MAPPINGS, SFX_INTENT_MAP, SFX_CONFIGS } from '../utils/sharedMediaMapping';
 import { sanitizeCaptionText } from '../utils/headlineSanitizer';
 import { SFX_EDITING_CONFIG } from '../config/sfxEditingConfig';
+import {
+  extractPowerHighlightWords,
+  generateWordTimings,
+  resolveCaptionAdaptivePosition,
+  calculateCaptionFontSize,
+} from './captionEngine';
 
 /**
   * Mapping B-Roll types by Ad Role (10-stage marketing funnel)
@@ -1371,6 +1377,49 @@ export function enrichSceneWithDecisionEngine(
   // Sanitize caption text lightly for speech display
   const sanitizedCaption = sanitizeCaptionText(scene.caption || '');
 
+  // Step 9.2: Semantic Power Highlight Word Selection & Density Control
+  const targetHighlightLimit = editing_intensity === 'HIGH' ? 3 : editing_intensity === 'MEDIUM' ? 2 : 1;
+  const powerHighlights = extractPowerHighlightWords(
+    sanitizedCaption,
+    targetHighlightLimit,
+    editing_intensity,
+    wordsPerSecond
+  );
+  const finalHighlights = (powerHighlights && powerHighlights.length > 0)
+    ? powerHighlights
+    : (scene.highlight_words && scene.highlight_words.length > 0 ? scene.highlight_words.slice(0, 3) : []);
+
+  // Compute Word Timings with refined highlight tags
+  const generatedTimings = generateWordTimings(
+    sanitizedCaption,
+    sceneDuration,
+    finalHighlights,
+    scene.role || 'explanation'
+  );
+
+  // Step 9.2: Safe-Zone Collision Avoidance & Adaptive Position
+  const hasVisualEvidence = Boolean(scene.visual_evidence);
+  const hasBroll = Boolean(scene.broll);
+  const hasUpperHeadline = Boolean(hookText || (index === 0 && scene.role === 'hook'));
+  const caption_adaptive_position = resolveCaptionAdaptivePosition(
+    scene,
+    hasUpperHeadline,
+    hasVisualEvidence,
+    hasBroll
+  );
+
+  // Step 9.2: Typography Rule & Font Size Intelligence
+  const fontSizeMetrics = calculateCaptionFontSize(
+    sanitizedCaption,
+    sanitizedCaption.split(/\s+/).length > 6 ? 2 : 1,
+    editing_intensity,
+    scene.caption_display_mode || 'clean_floating'
+  );
+
+  const caption_density_status = editing_intensity === 'LOW'
+    ? 'clean_minimal'
+    : (finalHighlights.length >= 2 ? 'power_highlight' : 'selective_emphasis');
+
   // If decision is KEEP_AROLL, PUNCH_IN, or TEXT_EMPHASIS, clear any external overlays
   const isNoOverlayDecision = ['KEEP_AROLL', 'PUNCH_IN', 'TEXT_EMPHASIS'].includes(visualDecision);
 
@@ -1380,6 +1429,11 @@ export function enrichSceneWithDecisionEngine(
     motion_scale: finalMotionScale,
     transition: finalTransition,
     caption: sanitizedCaption || scene.caption,
+    highlight_words: finalHighlights,
+    word_timings: generatedTimings,
+    caption_adaptive_position,
+    caption_font_size_pt: fontSizeMetrics.assPt,
+    caption_density_status,
     adRole,
     brollNeedScore: brollNeed.score,
     brollNeedReasons: brollNeed.reasons,

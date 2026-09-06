@@ -9,7 +9,8 @@ const STOPWORDS = new Set([
   'ATAU', 'SAAT', 'JUGA', 'BAHWA', 'TAPI', 'LAGI', 'BIAR', 'AGAR', 'PUN', 'KOK',
   'SIH', 'DONG', 'NIH', 'TUH', 'YA', 'YAH', 'ADA', 'OLEH', 'SAMPAI', 'TENTANG',
   'SEPERTI', 'KEMUDIAN', 'LALU', 'HANYA', 'CUMA', 'SIAPA', 'APA', 'KAPAN', 'KENAPA',
-  'MENGAPA', 'BAGAIMANA', 'NAH', 'JADI', 'BIASA', 'BIASANYA', 'HAL', 'ORANG',
+  'MENGAPA', 'BAGAIMANA', 'NAH', 'JADI', 'BIASA', 'BIASANYA', 'HAL', 'ORANG', 'BAGI',
+  'MASIH', 'BELUM', 'PERNAH', 'TERUS', 'TERSEBUT', 'TERLALU', 'SANGAT', 'BEGITU',
   // English stopwords
   'THE', 'AND', 'OR', 'BUT', 'IF', 'BECAUSE', 'AS', 'AT', 'BY', 'FOR', 'WITH',
   'ABOUT', 'AGAINST', 'BETWEEN', 'INTO', 'THROUGH', 'DURING', 'BEFORE', 'AFTER',
@@ -743,6 +744,7 @@ export function getActiveCaptionChunk(
     }
   }
 
+
   return {
     activeChunk,
     activeWordIdx,
@@ -750,5 +752,223 @@ export function getActiveCaptionChunk(
     allChunks: chunks,
   };
 }
+
+/**
+ * Step 9.2: Adaptive Positioning & Safe-Zone Collision Avoidance
+ * Determines the ideal Y position for subtitles: LOWER, CENTER-LOW, UPPER-LOW.
+ *
+ * Rules:
+ * - Default: LOWER (bottom ~18-20% / Y ~80-84%, e.g. bottom-16 / bottom-20)
+ * - Safe from Face: Eyeline at 33% and face at 18-54%, LOWER is 100% face-safe.
+ * - Safe from Upper Hook: If Upper Hook Headline is active at top (Y 10-25%), caption stays in LOWER.
+ * - Bottom Collision Avoidance: If lower third contains CTA overlay card, bottom visual card, or bottom UI in evidence/demo,
+ *   shift caption up to CENTER-LOW (Y ~68-72%) or UPPER-LOW (Y ~58-62%).
+ */
+export function resolveCaptionAdaptivePosition(
+  scene: any,
+  hasUpperHeadline: boolean = false,
+  hasVisualEvidence: boolean = false,
+  hasBroll: boolean = false
+): 'LOWER' | 'CENTER-LOW' | 'UPPER-LOW' {
+  if (scene?.caption_adaptive_position) {
+    return scene.caption_adaptive_position;
+  }
+
+  const role = scene?.role || scene?.adRole || 'explanation';
+  const displayMode = scene?.caption_display_mode || 'clean_floating';
+  const isCtaOrOffer = role === 'cta' || role === 'offer' || displayMode === 'cta_emphasis';
+  const isProofWithCard = (role === 'proof' || scene?.adRole === 'proof') && (hasVisualEvidence || scene?.brollFormat === 'data_card');
+  const isScreenDemo = hasVisualEvidence && (scene?.visual_evidence?.type === 'SCREEN_DEMO' || scene?.visual_evidence?.type === 'SCREEN_PROOF');
+
+  // If bottom has a prominent card/UI collision
+  if (isCtaOrOffer && (hasVisualEvidence || scene?.visual_evidence?.type === 'OFFER_CARD' || scene?.visual_evidence?.type === 'CTA_CARD')) {
+    return 'CENTER-LOW';
+  }
+
+  if (isScreenDemo) {
+    return 'CENTER-LOW';
+  }
+
+  if (isProofWithCard && !hasUpperHeadline) {
+    return 'CENTER-LOW';
+  }
+
+  // Default clean lower-third placement
+  return 'LOWER';
+}
+
+export function getCaptionPositionMetrics(
+  position: 'LOWER' | 'CENTER-LOW' | 'UPPER-LOW' | string = 'LOWER',
+  width: number = 720,
+  height: number = 1280
+): {
+  posClass: string;
+  assMarginV: number;
+  assPosY: number;
+  name: 'LOWER' | 'CENTER-LOW' | 'UPPER-LOW';
+} {
+  const norm = (position || 'LOWER').toUpperCase();
+  if (norm === 'UPPER-LOW' || norm === 'UPPER_LOW') {
+    return {
+      posClass: 'bottom-44 sm:bottom-48 left-3 right-3 max-w-[90%] mx-auto',
+      assMarginV: 510,
+      assPosY: Math.round(height * 0.60),
+      name: 'UPPER-LOW',
+    };
+  }
+  if (norm === 'CENTER-LOW' || norm === 'CENTER_LOW') {
+    return {
+      posClass: 'bottom-28 sm:bottom-32 left-3 right-3 max-w-[90%] mx-auto',
+      assMarginV: 360,
+      assPosY: Math.round(height * 0.72),
+      name: 'CENTER-LOW',
+    };
+  }
+  // Default LOWER
+  return {
+    posClass: 'bottom-12 sm:bottom-16 left-3 right-3 max-w-[92%] mx-auto',
+    assMarginV: 205,
+    assPosY: Math.round(height * 0.84),
+    name: 'LOWER',
+  };
+}
+
+/**
+ * Step 9.2: Typography Rule & Font Size Intelligence
+ * Calculates clean font size, line height, and font family based on:
+ * caption length, number of lines, display mode, scene role, and video dimensions.
+ */
+export function calculateCaptionFontSize(
+  text: string,
+  lineCount: number = 1,
+  intensity: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM',
+  displayMode: string = 'clean_floating',
+  width: number = 720,
+  height: number = 1280
+): {
+  previewPx: number;
+  assPt: number;
+  fontFamily: string;
+  fontWeight: string;
+  tracking: string;
+} {
+  const clean = (text || '').trim();
+  const wordCount = clean.split(/\s+/).filter(Boolean).length;
+  const isHookMode = displayMode === 'hook_headline';
+  const isProofMode = displayMode === 'proof_badge';
+  const isCtaMode = displayMode === 'cta_emphasis';
+
+  // Base font family selection from existing project fonts
+  let fontFamily = 'Bricolage Grotesque, sans-serif';
+  let fontWeight = 'font-bold';
+  let tracking = 'tracking-tight';
+
+  if (isHookMode) {
+    fontFamily = 'Anton, sans-serif';
+    fontWeight = 'font-black';
+    tracking = 'tracking-wide';
+  } else if (isProofMode) {
+    fontFamily = 'Sora, sans-serif';
+    fontWeight = 'font-bold';
+    tracking = 'tracking-normal';
+  } else if (displayMode === 'clean_floating' && intensity === 'HIGH') {
+    fontFamily = 'Bricolage Grotesque, sans-serif';
+    fontWeight = 'font-black';
+    tracking = 'tracking-tight';
+  }
+
+  // Scale font size based on lines & word count
+  let assPt = 40;
+  let previewPx = 16;
+
+  if (lineCount <= 1) {
+    if (wordCount <= 3) {
+      assPt = isHookMode ? 46 : 42;
+      previewPx = isHookMode ? 20 : 18;
+    } else {
+      assPt = 40;
+      previewPx = 16;
+    }
+  } else if (lineCount === 2) {
+    if (wordCount <= 6) {
+      assPt = 38;
+      previewPx = 15;
+    } else {
+      assPt = 36;
+      previewPx = 14;
+    }
+  } else {
+    // 3 lines
+    assPt = 32;
+    previewPx = 13;
+  }
+
+  // Mode adjustments
+  if (isProofMode) {
+    assPt = Math.min(assPt, 36);
+    previewPx = Math.min(previewPx, 14);
+  } else if (isCtaMode) {
+    assPt = Math.max(assPt, 38);
+    previewPx = Math.max(previewPx, 16);
+  }
+
+  return {
+    previewPx,
+    assPt,
+    fontFamily,
+    fontWeight,
+    tracking,
+  };
+}
+
+/**
+ * Step 9.2: Color Category Mapping for Secondary Power Word Emphasis
+ * High contrast, WCAG compliant, clean and cohesive.
+ * - problem: Rose (#FB7185)
+ * - benefit_result: Amber (#FDE047)
+ * - urgency_cta: Cyan (#67E8F9)
+ * - offer_mechanism: Emerald (#6EE7B7)
+ * - general: Warm Yellow/Amber (#FDE047)
+ */
+export function getHighlightColorCategory(category: MarketingCategory, isHook: boolean = false): {
+  previewClass: string;
+  assColorCode: string;
+} {
+  if (isHook) {
+    return {
+      previewClass: 'text-amber-300 font-black',
+      assColorCode: '&H0000FFFF&',
+    };
+  }
+
+  switch (category) {
+    case 'problem':
+      return {
+        previewClass: 'text-rose-400 font-black drop-shadow-[0_2px_8px_rgba(244,63,94,0.4)]',
+        assColorCode: '&H008571FB&',
+      };
+    case 'benefit_result':
+      return {
+        previewClass: 'text-amber-300 font-black drop-shadow-[0_2px_8px_rgba(253,224,71,0.4)]',
+        assColorCode: '&H0047E0FD&',
+      };
+    case 'urgency_cta':
+      return {
+        previewClass: 'text-cyan-300 font-black drop-shadow-[0_2px_8px_rgba(103,232,249,0.4)]',
+        assColorCode: '&H00F9E867&',
+      };
+    case 'offer_mechanism':
+      return {
+        previewClass: 'text-emerald-300 font-black drop-shadow-[0_2px_8px_rgba(110,231,183,0.4)]',
+        assColorCode: '&H00B7E76E&',
+      };
+    default:
+      return {
+        previewClass: 'text-amber-300 font-black drop-shadow-[0_2px_8px_rgba(253,224,71,0.4)]',
+        assColorCode: '&H0047E0FD&',
+      };
+  }
+}
+
 
 
