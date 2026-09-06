@@ -356,6 +356,10 @@ Style: Caption_UpperLow,Bricolage Grotesque,36,&H00FFFFFF,&H000000FF,&H00000000,
 Style: Caption_Hook,Anton,44,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.2,1.8,2,30,30,205,1
 Style: Caption_Proof,Sora,36,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.8,1.5,2,30,30,205,1
 Style: Caption_CTA,Bricolage Grotesque,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.0,1.6,2,30,30,205,1
+Style: Caption_Subdued,Plus Jakarta Sans,32,&H00E2E8F0,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.0,1.0,2,30,30,205,1
+Style: Caption_Compact,Bricolage Grotesque,32,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,3.2,1.2,2,30,30,205,1
+Style: Caption_Minimal,Bricolage Grotesque,28,&H00CBD5E1,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,2.8,1.0,2,30,30,205,1
+Style: Caption_Emphasized,Bricolage Grotesque,44,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,4.2,1.8,2,30,30,205,1
 Style: UpperHeadline_CleanCreator,${cfgCleanCreator.assFontName},${cfgCleanCreator.fontSize.assPt},${cfgCleanCreator.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgCleanCreator.strokeAss.outline},${cfgCleanCreator.strokeAss.shadow},8,48,48,130,1
 Style: UpperHeadlineFaceProtected_CleanCreator,${cfgCleanCreator.assFontName},${cfgCleanCreator.fontSize.assPtFaceProtected},${cfgCleanCreator.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgCleanCreator.strokeAss.outline},${cfgCleanCreator.strokeAss.shadow},8,48,48,260,1
 Style: UpperHeadline_FastTikTok,${cfgFastTikTok.assFontName},${cfgFastTikTok.fontSize.assPt},${cfgFastTikTok.baseTextColorHex},&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,-1,0,1,${cfgFastTikTok.strokeAss.outline},${cfgFastTikTok.strokeAss.shadow},8,48,48,130,1
@@ -402,7 +406,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const isCTA = scene.role === 'cta' || scene.adRole === 'cta' || scene.adRole === 'offer';
 
     const hasUpperHeadline = shouldRenderUpperHeadline(scene);
-    const canRenderInternalLayer = shouldRenderInternalLayer(scene.brollFormat || '', hasUpperHeadline);
+    const canRenderInternalLayer = shouldRenderInternalLayer(scene.brollFormat || '', hasUpperHeadline, scene);
 
     // 1a. Internal B-roll format layers on Layer 2 (Only if canRenderInternalLayer is true)
     if (canRenderInternalLayer) {
@@ -492,7 +496,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     // Style resolution based on adaptive position & scene role
     const posNorm = String(adaptivePosition || 'LOWER').toUpperCase();
     let styleName = 'Caption_Lower';
-    if (posNorm.includes('CENTER')) {
+
+    // Step 9.4B.2: Composition Profile Caption Treatment
+    const captionTreatment = scene.composition_profile?.captionTreatment || 'NORMAL';
+    const suppressExcessiveHighlights = scene.composition_profile?.suppressedElements?.includes('EXCESSIVE_CAPTION_HIGHLIGHTS');
+
+    if (captionTreatment === 'SUBDUED') {
+      styleName = 'Caption_Subdued';
+    } else if (captionTreatment === 'COMPACT') {
+      styleName = 'Caption_Compact';
+    } else if (captionTreatment === 'MINIMAL') {
+      styleName = 'Caption_Minimal';
+    } else if (captionTreatment === 'EMPHASIZED') {
+      styleName = 'Caption_Emphasized';
+    } else if (posNorm.includes('CENTER')) {
       styleName = 'Caption_CenterLow';
     } else if (posNorm.includes('UPPER')) {
       styleName = 'Caption_UpperLow';
@@ -515,9 +532,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       // Join wrapped lines with ASS newline tag \N
       let assText = chunk.wrappedLines.map(l => l.text).join('\\N');
       let highlightedCount = 0;
+      const maxHighlightsAllowed = suppressExcessiveHighlights || captionTreatment === 'SUBDUED' || captionTreatment === 'MINIMAL' ? 1 : 3;
 
       chunk.words.forEach((wObj) => {
-        if (highlightedCount >= 3) return;
+        if (highlightedCount >= maxHighlightsAllowed) return;
         const word = wObj.word;
         const wt = scene.word_timings?.[wObj.globalIndex];
         const cleanWord = word.replace(/[^a-zA-Z0-9%]/g, '').toLowerCase();
@@ -530,7 +548,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if (shouldHighlight) {
           const regex = new RegExp(`\\b(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i');
           const colorInfo = getHighlightColorCategory(cat, isHook);
-          const highlightAss = `{\\c${colorInfo.assColorCode}}{\\b1}`;
+          const highlightColorCode = captionTreatment === 'SUBDUED' ? '&H00E2E8F0&' : colorInfo.assColorCode;
+          const highlightAss = `{\\c${highlightColorCode}}{\\b1}`;
           if (regex.test(assText)) {
             assText = assText.replace(regex, `${highlightAss}$1{\\b0}{\\c&H00FFFFFF&}`);
             highlightedCount++;
@@ -1191,7 +1210,10 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
       const sc = scenes[sIdx];
       const brollUrl = sc.broll?.previewUrl || sc.broll?.sourceUrl || sc.visual_evidence?.userAssetUrl;
       const decision = sc.visualDecision || 'KEEP_AROLL';
-      const allowsBrollOverlay = ['BROLL', 'PRODUCT_DEMO', 'SCREENSHOT', 'GRAPH', 'SPLIT_SCREEN'].includes(decision);
+
+      // Step 9.4B.2: Check generic B-roll suppression from composition profile
+      const isGenericBrollSuppressed = sc.composition_profile?.suppressedElements?.includes('GENERIC_BROLL') && !sc.visual_evidence;
+      const allowsBrollOverlay = ['BROLL', 'PRODUCT_DEMO', 'SCREENSHOT', 'GRAPH', 'SPLIT_SCREEN'].includes(decision) && !isGenericBrollSuppressed;
 
       if (brollUrl && allowsBrollOverlay) {
         brollPlannedCount++;
@@ -1207,18 +1229,26 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
           let assetStart = Math.max(0, sc.start);
           let assetEnd = Math.min(targetDuration, sc.end);
 
+          // Step 9.4B.2: Hook Focal Lock secondary card delay
+          if (sc.composition_profile?.hookFocalLockActive && sc.composition_profile?.suppressedElements?.includes('SECONDARY_CARDS_IN_HOOK_WINDOW')) {
+            const lockDur = sc.composition_profile.hookFocalLockDurationSec || 1.2;
+            assetStart = Math.min(assetEnd, assetStart + lockDur);
+          }
+
           if (isTH && requestedStyle === 'full') {
             assetEnd = Math.min(assetEnd, assetStart + 1.5);
           }
 
-          brollAssets.push({
-            sceneIdx: sIdx,
-            localPath: downloadRes.localPath,
-            isVideo: !!downloadRes.isVideo,
-            start: assetStart,
-            end: assetEnd,
-            style: effectiveStyle,
-          });
+          if (assetEnd > assetStart + 0.2) {
+            brollAssets.push({
+              sceneIdx: sIdx,
+              localPath: downloadRes.localPath,
+              isVideo: !!downloadRes.isVideo,
+              start: assetStart,
+              end: assetEnd,
+              style: effectiveStyle,
+            });
+          }
         } else {
           brollFailedReasons.push(`Scene ${sIdx + 1}: ${downloadRes.error || 'Failed to download asset'}`);
           // Fallback to PUNCH_IN or TEXT_EMPHASIS if asset download fails and switch to safe typography layer
@@ -2660,19 +2690,19 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
         ? 'Strict user-asset-only policy active (no stock footage allowed)'
         : 'Generic stock B-roll permanently disabled',
       previewInternalLayerCount: (scenes || []).filter(
-        (s: any) => shouldRenderInternalLayer(s.brollFormat || '', shouldRenderUpperHeadline(s)) && (s.brollFormat === 'typography' || s.brollFormat === 'motion_graphic' || s.brollFormat === 'data_card')
+        (s: any) => shouldRenderInternalLayer(s.brollFormat || '', shouldRenderUpperHeadline(s), s) && (s.brollFormat === 'typography' || s.brollFormat === 'motion_graphic' || s.brollFormat === 'data_card')
       ).length,
       finalInternalLayerCount: typographyRenderedCount + motionGraphicRenderedCount + (assResult.dataCardRenderedCount || 0),
-      requiredTypographyCount: (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length,
+      requiredTypographyCount: (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length,
       renderedTypographyCount: typographyRenderedCount,
-      requiredMotionGraphicCount: (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length,
+      requiredMotionGraphicCount: (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length,
       renderedMotionGraphicCount: motionGraphicRenderedCount,
-      requiredDataCardCount: (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length,
+      requiredDataCardCount: (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length,
       renderedDataCardCount: assResult.dataCardRenderedCount || 0,
       internalLayerParityPassed: (
-        ((scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length === 0 || typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length) &&
-        ((scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length === 0 || motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length) &&
-        ((scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length === 0 || (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length)
+        ((scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length === 0 || typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length) &&
+        ((scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length === 0 || motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length) &&
+        ((scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length === 0 || (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length)
       ),
       externalBrollParityPassed: brollFailedReasons.length === 0 && (
         (scenes || []).filter((s: any) => s.broll && s.broll.sourceUrl).length === 0 ||
@@ -2680,19 +2710,19 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
         (!req.project.user_proof_assets || req.project.user_proof_assets.length === 0)
       ),
       usedFallbackGraph,
-      typographyRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length === 0
+      typographyRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length === 0
         ? 'not_required'
-        : typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length
+        : typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length
         ? 'rendered'
         : 'missing',
-      motionGraphicRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length === 0
+      motionGraphicRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length === 0
         ? 'not_required'
-        : motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length
+        : motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length
         ? 'rendered'
         : 'missing',
-      dataCardRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length === 0
+      dataCardRenderedInFinal: (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length === 0
         ? 'not_required'
-        : (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length
+        : (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length
         ? 'rendered'
         : 'missing',
       dataCardSanitizationMode: (req.project as any).dataCardSanitizationMode || 'render_safety_first',
@@ -2704,9 +2734,9 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
       previewFinalLayerConfigMatched: true,
       previewFinalParityStatus: (
         (
-          ((scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length === 0 || typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length) &&
-          ((scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length === 0 || motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length) &&
-          ((scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length === 0 || (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length)
+          ((scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length === 0 || typographyRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length) &&
+          ((scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length === 0 || motionGraphicRenderedCount >= (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length) &&
+          ((scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length === 0 || (assResult.dataCardRenderedCount || 0) >= (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length)
         ) &&
         brollFailedReasons.length === 0 &&
         !usedFallbackGraph &&
@@ -2719,15 +2749,15 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
       ) ? 'passed' : 'failed',
       parityFailureReasons: (() => {
         const reasons: string[] = [];
-        const reqTypo = (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s))).length;
+        const reqTypo = (scenes || []).filter((s: any) => s.brollFormat === 'typography' && shouldRenderInternalLayer('typography', shouldRenderUpperHeadline(s), s)).length;
         if (reqTypo > 0 && typographyRenderedCount < reqTypo) {
           reasons.push(`Typography required in ${reqTypo} scene(s) but rendered only ${typographyRenderedCount}`);
         }
-        const reqMg = (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s))).length;
+        const reqMg = (scenes || []).filter((s: any) => s.brollFormat === 'motion_graphic' && shouldRenderInternalLayer('motion_graphic', shouldRenderUpperHeadline(s), s)).length;
         if (reqMg > 0 && motionGraphicRenderedCount < reqMg) {
           reasons.push(`Motion graphic required in ${reqMg} scene(s) but rendered only ${motionGraphicRenderedCount}`);
         }
-        const reqDc = (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s))).length;
+        const reqDc = (scenes || []).filter((s: any) => s.brollFormat === 'data_card' && shouldRenderInternalLayer('data_card', shouldRenderUpperHeadline(s), s)).length;
         if (reqDc > 0 && (assResult.dataCardRenderedCount || 0) < reqDc) {
           reasons.push(`Data card required in ${reqDc} scene(s) but rendered only ${assResult.dataCardRenderedCount || 0}`);
         }

@@ -390,6 +390,23 @@ export function getPublicHeadline(scene: Partial<SceneEditPlan> | any): string {
  */
 export function shouldRenderUpperHeadline(scene: Partial<SceneEditPlan> | any): boolean {
   if (!scene) return false;
+
+  // Step 9.4B.2: Composition Profile Headline Gatekeeping
+  const profile = scene.composition_profile;
+  if (profile) {
+    if (profile.headlineTreatment === 'SUPPRESSED') {
+      return false;
+    }
+    if (Array.isArray(profile.suppressedElements)) {
+      if (
+        profile.suppressedElements.includes('UPPER_HEADLINE') ||
+        profile.suppressedElements.includes('COMPETING_HEADLINE')
+      ) {
+        return false;
+      }
+    }
+  }
+
   const headline = getPublicHeadline(scene);
   return Boolean(headline && headline.trim().length > 0);
 }
@@ -402,12 +419,28 @@ export function shouldRenderUpperHeadline(scene: Partial<SceneEditPlan> | any): 
  */
 export function shouldRenderInternalLayer(
   formatName: string,
-  hasUpperHeadline: boolean
+  hasUpperHeadline: boolean,
+  scene?: Partial<SceneEditPlan> | any
 ): boolean {
   const isUpperZoneFormat = ['typography', 'motion_graphic', 'data_card'].includes(formatName);
   if (isUpperZoneFormat && hasUpperHeadline) {
     return false; // Prevent double text in upper area
   }
+
+  // Step 9.4B.2: Check composition profile suppression for decorative motion / typography
+  const profile = scene?.composition_profile;
+  if (profile && Array.isArray(profile.suppressedElements)) {
+    if (
+      ['motion_graphic', 'typography'].includes(formatName) &&
+      profile.suppressedElements.includes('DECORATIVE_MOTION_GRAPHICS')
+    ) {
+      return false;
+    }
+    if (isUpperZoneFormat && profile.suppressedElements.includes('DOUBLE_UPPER_TEXT') && hasUpperHeadline) {
+      return false;
+    }
+  }
+
   return true;
 }
 

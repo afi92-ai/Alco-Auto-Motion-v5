@@ -5,6 +5,12 @@ import { playSoundEffect } from '../utils/audioEffects';
 import { SFX_CONFIGS, INTERNAL_LAYER_CONFIGS } from '../utils/sharedMediaMapping';
 import { getPublicHeadline, resolveHookStyle, resolveHookLayout, getHookFontConfig, shouldRenderUpperHeadline, shouldRenderInternalLayer } from '../utils/headlineSanitizer';
 import {
+  shouldRenderBrollLayer,
+  shouldRenderEvidenceLayer,
+  getEffectiveCaptionTreatment,
+  isElementSuppressed,
+} from '../engine/sceneCompositionEngine';
+import {
   getActiveWordIndex,
   determineCaptionDisplayMode,
   calculateCaptionLineWrapping,
@@ -358,6 +364,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
     // Render Visual Evidence Overlay Cards (Sleek, Compact & Non-Intrusive)
     const renderVisualEvidenceOverlay = () => {
       if (viewMode === 'raw' || !currentScene?.visual_evidence || !currentScene.visual_evidence.userAssetUrl) return null;
+      if (!shouldRenderEvidenceLayer(currentScene, currentTime)) return null;
       const ev = currentScene.visual_evidence;
       const assetUrl = ev.userAssetUrl;
 
@@ -463,7 +470,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
       if (viewMode === 'raw' || !currentScene?.brollFormat) return null;
 
       const hasUpperHeadline = shouldRenderUpperHeadline(currentScene);
-      if (!shouldRenderInternalLayer(currentScene.brollFormat || '', hasUpperHeadline)) {
+      if (!shouldRenderInternalLayer(currentScene.brollFormat || '', hasUpperHeadline, currentScene)) {
         return null;
       }
 
@@ -734,12 +741,30 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
       displayMode
     );
 
+    // Step 9.4B.2: Composition Profile Caption Treatment
+    const captionTreatment = getEffectiveCaptionTreatment(currentScene);
+    const suppressExcessiveHighlights = isElementSuppressed('EXCESSIVE_CAPTION_HIGHLIGHTS', currentScene.composition_profile);
+
     let containerPos = posMetrics.posClass;
     let containerStyle = 'bg-transparent text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_12px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
     let fontFamily = fontMetrics.fontFamily;
     let activeWordStyle = 'scale-105 text-amber-300 font-black inline-block drop-shadow-[0_0_14px_rgba(251,191,36,1)] z-20';
 
-    if (displayMode === 'hook_headline') {
+    let effectiveFontSizePx = fontMetrics.previewPx;
+    if (captionTreatment === 'SUBDUED') {
+      fontFamily = "'Plus Jakarta Sans', sans-serif";
+      effectiveFontSizePx = Math.round(fontMetrics.previewPx * 0.86);
+      containerStyle = 'bg-transparent text-center drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] [text-shadow:_0_1px_6px_rgba(0,0,0,0.8)]';
+      activeWordStyle = 'scale-100 text-slate-200 font-semibold inline-block drop-shadow-xs px-0.5';
+    } else if (captionTreatment === 'COMPACT') {
+      effectiveFontSizePx = Math.round(fontMetrics.previewPx * 0.82);
+    } else if (captionTreatment === 'MINIMAL') {
+      effectiveFontSizePx = Math.round(fontMetrics.previewPx * 0.75);
+      activeWordStyle = 'scale-100 text-slate-300 font-medium inline-block drop-shadow-xs px-0.5';
+    } else if (captionTreatment === 'EMPHASIZED') {
+      effectiveFontSizePx = Math.round(fontMetrics.previewPx * 1.08);
+      activeWordStyle = 'scale-110 text-amber-300 font-black inline-block drop-shadow-[0_0_16px_rgba(251,191,36,1)] z-20';
+    } else if (displayMode === 'hook_headline') {
       containerStyle = 'bg-transparent max-w-[92%] mx-auto text-center drop-shadow-[0_4px_16px_rgba(0,0,0,0.95)] [text-shadow:_0_2px_14px_rgba(0,0,0,0.95),_0_0_4px_#000000]';
       activeWordStyle = 'scale-105 text-amber-300 font-black inline-block drop-shadow-[0_0_14px_rgba(251,191,36,1)] z-20';
     } else if (displayMode === 'proof_badge') {
@@ -765,7 +790,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
             className={`leading-snug text-white flex flex-col items-center justify-center space-y-1.5 ${fontMetrics.fontWeight} ${fontMetrics.tracking}`}
             style={{
               fontFamily,
-              fontSize: `${fontMetrics.previewPx}px`,
+              fontSize: `${effectiveFontSizePx}px`,
             }}
           >
             {wrappedLines.map((line) => (
@@ -774,7 +799,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
                   const i = wObj.globalIndex;
                   const word = wObj.word;
                   const wt = currentScene.word_timings?.[i];
-                  const isHighlight = Boolean(wt?.isHighlight);
+                  const isHighlight = Boolean(wt?.isHighlight) && !suppressExcessiveHighlights;
                   const isCurrentlySpoken = i === activeWordIdx;
                   const cat = wt?.marketingCategory || 'general';
 
@@ -787,8 +812,8 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
                         isCurrentlySpoken
                           ? activeWordStyle
                           : isHighlight
-                          ? colorInfo.previewClass
-                          : 'text-slate-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-0.5'
+                          ? (captionTreatment === 'SUBDUED' ? 'text-slate-200 font-medium' : colorInfo.previewClass)
+                          : (captionTreatment === 'SUBDUED' ? 'text-slate-300 drop-shadow-xs px-0.5' : 'text-slate-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] px-0.5')
                       }`}
                     >
                       {word}
@@ -1026,7 +1051,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
               </div>
 
               {/* B-Roll PIP Overlay */}
-              {currentScene?.broll && (
+              {currentScene?.broll && shouldRenderBrollLayer(currentScene, currentTime) && (
                 <div className="absolute top-12 right-2 w-24 aspect-video rounded-lg overflow-hidden border border-amber-400 shadow-xl z-20 animate-fade-in bg-slate-950">
                   <div className="absolute top-0 left-0 bg-amber-500 text-slate-950 text-[7px] font-black px-1">
                     B-ROLL
@@ -1089,7 +1114,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
             </div>
 
             {/* B-Roll Framing (Dynamic Floating PIP Sticker) */}
-            {viewMode === 'edited' && currentScene?.broll && (
+            {viewMode === 'edited' && currentScene?.broll && shouldRenderBrollLayer(currentScene, currentTime) && (
               <div
                 className="absolute top-14 right-3 w-32 aspect-video rounded-xl overflow-hidden border-2 border-amber-400 shadow-2xl z-20 animate-fade-in bg-slate-950/95"
               >

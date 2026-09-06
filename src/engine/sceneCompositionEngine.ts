@@ -485,3 +485,80 @@ export function isHookFocalLockActive(
   const elapsed = currentTime - sceneStart;
   return elapsed >= 0 && elapsed < (profile.hookFocalLockDurationSec || 1.2);
 }
+
+/**
+ * Checks if an element type is suppressed by the scene composition profile
+ */
+export function isElementSuppressed(
+  element: SuppressedElement,
+  profile?: SceneCompositionProfile
+): boolean {
+  if (!profile || !profile.suppressedElements) return false;
+  return profile.suppressedElements.includes(element);
+}
+
+/**
+ * Determines whether B-roll overlay should be rendered at the current timestamp
+ */
+export function shouldRenderBrollLayer(
+  scene: Partial<SceneEditPlan> | any,
+  currentTime?: number
+): boolean {
+  if (!scene || !scene.broll) return false;
+  const profile = scene.composition_profile as SceneCompositionProfile | undefined;
+  if (!profile) return true;
+
+  // 1. Generic B-Roll suppression (suppresses stock/generic broll, preserves user proof assets)
+  const isUserBroll = Boolean(scene.broll.isUserUploaded);
+  if (!isUserBroll && isElementSuppressed('GENERIC_BROLL', profile)) {
+    return false;
+  }
+
+  // 2. Hook Focal Lock suppression during opening 1.2s window
+  if (
+    typeof currentTime === 'number' &&
+    profile.hookFocalLockActive &&
+    isElementSuppressed('SECONDARY_CARDS_IN_HOOK_WINDOW', profile)
+  ) {
+    if (isHookFocalLockActive(currentTime, Number(scene.start) || 0, profile)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Determines whether Visual Evidence overlay should be rendered at the current timestamp
+ */
+export function shouldRenderEvidenceLayer(
+  scene: Partial<SceneEditPlan> | any,
+  currentTime?: number
+): boolean {
+  if (!scene || !scene.visual_evidence) return false;
+  const profile = scene.composition_profile as SceneCompositionProfile | undefined;
+  if (!profile) return true;
+
+  // Secondary cards suppressed during hook focal lock window
+  if (
+    typeof currentTime === 'number' &&
+    profile.hookFocalLockActive &&
+    isElementSuppressed('SECONDARY_CARDS_IN_HOOK_WINDOW', profile)
+  ) {
+    if (isHookFocalLockActive(currentTime, Number(scene.start) || 0, profile)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Resolves effective caption treatment ('NORMAL' | 'COMPACT' | 'SUBDUED' | 'EMPHASIZED' | 'MINIMAL')
+ */
+export function getEffectiveCaptionTreatment(
+  scene: Partial<SceneEditPlan> | any
+): CaptionTreatment {
+  return scene?.composition_profile?.captionTreatment || 'NORMAL';
+}
+

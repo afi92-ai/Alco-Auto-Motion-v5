@@ -1,6 +1,12 @@
 import { AlcoEditingProject, SceneEditPlan } from '../types';
 import { getActiveCaptionChunk, determineCaptionDisplayMode } from './captionEngine';
 import { sanitizeCaptionText } from '../utils/headlineSanitizer';
+import {
+  shouldRenderBrollLayer,
+  shouldRenderEvidenceLayer,
+  getEffectiveCaptionTreatment,
+  isElementSuppressed,
+} from './sceneCompositionEngine';
 
 export interface PreloadedAssets {
   brollImages?: Record<string, HTMLImageElement>;
@@ -209,12 +215,32 @@ export function drawCaptionsOnCanvas(
   const totalBlockHeight = wrappedLines.length * lineHeight;
   const startBlockY = baseY - totalBlockHeight / 2;
 
-  ctx.font = `900 ${fontSize}px ${fontName}`;
+  // Step 9.4B.2: Composition Profile Caption Treatment
+  const captionTreatment = getEffectiveCaptionTreatment(scene);
+  const suppressExcessiveHighlights = isElementSuppressed('EXCESSIVE_CAPTION_HIGHLIGHTS', scene.composition_profile);
+
+  let effectiveFontSize = fontSize;
+  let effectiveLineHeight = lineHeight;
+  if (captionTreatment === 'SUBDUED') {
+    effectiveFontSize = Math.round(fontSize * 0.88);
+    effectiveLineHeight = Math.round(lineHeight * 0.88);
+  } else if (captionTreatment === 'COMPACT') {
+    effectiveFontSize = Math.round(fontSize * 0.82);
+    effectiveLineHeight = Math.round(lineHeight * 0.82);
+  } else if (captionTreatment === 'MINIMAL') {
+    effectiveFontSize = Math.round(fontSize * 0.75);
+    effectiveLineHeight = Math.round(lineHeight * 0.78);
+  } else if (captionTreatment === 'EMPHASIZED') {
+    effectiveFontSize = Math.round(fontSize * 1.08);
+    effectiveLineHeight = Math.round(lineHeight * 1.06);
+  }
+
+  ctx.font = `900 ${effectiveFontSize}px ${fontName}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
   wrappedLines.forEach((lineObj) => {
-    const lineY = startBlockY + lineObj.lineIndex * lineHeight;
+    const lineY = startBlockY + lineObj.lineIndex * effectiveLineHeight;
     const spaceW = ctx.measureText(' ').width;
 
     let totalLineW = 0;
@@ -231,36 +257,42 @@ export function drawCaptionsOnCanvas(
       const wWidth = wordWidths[wIdx];
       const isCurrentlySpoken = wObj.globalIndex === activeWordIdx;
       const wt = scene.word_timings?.[wObj.globalIndex];
-      const isHighlight = Boolean(wt?.isHighlight);
+      const isHighlight = Boolean(wt?.isHighlight) && !suppressExcessiveHighlights;
 
       if (isCurrentlySpoken) {
-        const pillColor = displayMode === 'proof_badge' ? '#22d3ee' : '#fbbf24';
+        let pillColor = displayMode === 'proof_badge' ? '#22d3ee' : '#fbbf24';
+        if (captionTreatment === 'SUBDUED') {
+          pillColor = 'rgba(148, 163, 184, 0.9)'; // Calmer slate tone to not overpower proof
+        } else if (captionTreatment === 'MINIMAL') {
+          pillColor = 'rgba(203, 213, 225, 0.85)';
+        }
+
         ctx.fillStyle = pillColor;
-        if (!isSafeMode) {
+        if (!isSafeMode && captionTreatment !== 'SUBDUED' && captionTreatment !== 'MINIMAL') {
           ctx.shadowColor = displayMode === 'proof_badge' ? 'rgba(34, 211, 238, 0.9)' : 'rgba(251, 191, 36, 0.9)';
           ctx.shadowBlur = 14;
         } else {
           ctx.shadowBlur = 0;
         }
         ctx.beginPath();
-        ctx.roundRect(wordX - 6, lineY - fontSize * 0.65, wWidth + 12, fontSize * 1.25, [8]);
+        ctx.roundRect(wordX - 6, lineY - effectiveFontSize * 0.65, wWidth + 12, effectiveFontSize * 1.25, [8]);
         ctx.fill();
 
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#020617';
         ctx.fillText(wObj.word, wordX, lineY);
       } else {
-        if (!isSafeMode) {
+        if (!isSafeMode && captionTreatment !== 'SUBDUED' && captionTreatment !== 'MINIMAL') {
           ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
           ctx.shadowBlur = 8;
         } else {
           ctx.shadowBlur = 0;
         }
         ctx.strokeStyle = '#020617';
-        ctx.lineWidth = isSafeMode ? 4 : 6;
+        ctx.lineWidth = isSafeMode ? 4 : (captionTreatment === 'SUBDUED' ? 4 : 6);
         ctx.lineJoin = 'round';
 
-        let textColor = '#ffffff';
+        let textColor = captionTreatment === 'SUBDUED' ? '#e2e8f0' : '#ffffff';
         if (isHighlight) {
           const cat = wt?.marketingCategory || 'general';
           const isMetricNumber = /\d+|%|X|RP|USD|JUTA|OMSET|ROAS/i.test(wObj.word);
@@ -290,9 +322,12 @@ export function drawBrollOverlay(
   ctx: CanvasRenderingContext2D,
   scene: SceneEditPlan,
   preloadedImages?: Record<string, HTMLImageElement>,
-  isSafeMode: boolean = false
+  isSafeMode: boolean = false,
+  currentTime?: number
 ) {
   if (!scene.broll || isSafeMode) return; // In safe mode, skip heavy B-Roll image to prevent lag
+  if (!shouldRenderBrollLayer(scene, currentTime)) return; // Step 9.4B.2: Suppression & Hook focal lock
+
   const brollImg = preloadedImages?.[scene.id];
   if (!brollImg || !brollImg.complete || !brollImg.naturalWidth) return;
 
@@ -339,9 +374,11 @@ export function drawVisualEvidenceOverlay(
   ctx: CanvasRenderingContext2D,
   scene: SceneEditPlan,
   preloadedImages?: Record<string, HTMLImageElement>,
-  isSafeMode: boolean = false
+  isSafeMode: boolean = false,
+  currentTime?: number
 ) {
   if (!scene.visual_evidence) return;
+  if (!shouldRenderEvidenceLayer(scene, currentTime)) return; // Step 9.4B.2: Hook focal lock secondary card delay
   const ev = scene.visual_evidence;
   const evImg = preloadedImages?.[scene.id];
 
@@ -596,10 +633,10 @@ export function renderFrameToCanvas(
   }
 
   // 4. Draw B-Roll Overlay (skipped in Safe Mode)
-  drawBrollOverlay(ctx, scene, preloadedAssets?.brollImages, isSafeMode);
+  drawBrollOverlay(ctx, scene, preloadedAssets?.brollImages, isSafeMode, currentTime);
 
   // 5. Draw Visual Evidence Overlay Cards (zero shadowBlur in Safe Mode)
-  drawVisualEvidenceOverlay(ctx, scene, preloadedAssets?.evidenceImages, isSafeMode);
+  drawVisualEvidenceOverlay(ctx, scene, preloadedAssets?.evidenceImages, isSafeMode, currentTime);
 
   // 6. Draw Dynamic Captions with Active Highlight (zero shadowBlur in Safe Mode)
   drawCaptionsOnCanvas(ctx, scene, currentTime, project, activeIdx, isSafeMode);
