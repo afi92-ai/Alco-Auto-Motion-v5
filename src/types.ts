@@ -436,6 +436,8 @@ export interface SceneEditPlan {
   speech_duration?: number;
   // Step 9.3 Asset Relevance & Ranking Intelligence fields
   asset_match?: AssetMatchResult;
+  // Step 9.4B Scene Composition & Attention Hierarchy
+  composition_profile?: any;
 }
 
 export interface StylePresetProfile {

@@ -41,6 +41,7 @@ export * from './outputQualityAuditor';
 export * from './visualDesignAudit';
 export * from './decisionEngine';
 export * from './assetMatcher';
+export * from './sceneCompositionEngine';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
   clean_creator: {

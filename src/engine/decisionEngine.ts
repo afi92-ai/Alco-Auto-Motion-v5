@@ -23,6 +23,7 @@ import {
   resolveCaptionAdaptivePosition,
   calculateCaptionFontSize,
 } from './captionEngine';
+import { evaluateSceneComposition } from './sceneCompositionEngine';
 
 /**
   * Mapping B-Roll types by Ad Role (10-stage marketing funnel)
@@ -1476,6 +1477,14 @@ export function enrichSceneWithDecisionEngine(
     broll: isNoOverlayDecision ? null : scene.broll,
     visual_evidence: isNoOverlayDecision ? null : scene.visual_evidence,
   };
+
+  // Step 9.4B: Single Source of Truth for Marketing Attention Hierarchy
+  const compositionProfile = evaluateSceneComposition(baseScene, {
+    index,
+    totalScenes,
+    availableUserAssets: (scene as any).availableUserAssets || [],
+  });
+  baseScene.composition_profile = compositionProfile;
 
   // Run layering pass
   const layeringResult = determineSfxLayers(baseScene, index, allEnrichedScenesSoFar, totalScenes);
