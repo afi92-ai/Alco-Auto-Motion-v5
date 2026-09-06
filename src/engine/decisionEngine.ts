@@ -273,10 +273,17 @@ export function calculateBrollNeed(params: BrollNeedParams): BrollNeedResult {
     reasons.push('Concrete objects mentioned in transcript (+20)');
   }
 
-  // 2. Role is problem/agitate/demo/proof/solution (+20)
-  if (['problem', 'agitate', 'demo', 'proof', 'solution'].includes(params.adRole)) {
+  // 2. Role is problem/agitate/demo/proof/solution/cta/offer/curiosity/insight/benefit (+20)
+  if (['problem', 'agitate', 'demo', 'proof', 'solution', 'cta', 'offer', 'curiosity', 'insight', 'benefit'].includes(params.adRole)) {
     score += 20;
     reasons.push(`Ad role (${params.adRole}) benefits from visual proof/demonstration (+20)`);
+  }
+
+  // 2b. Comparison & transformation explicit mention (+20)
+  const comparisonRegex = /PERBEDAAN|BEFORE|AFTER|TRANSFORMASI|BANDINGKAN|SEBELUM|SESUDAH|CARA LAMA|CARA BARU/i;
+  if (comparisonRegex.test(textUpper)) {
+    score += 20;
+    reasons.push('Comparison or before/after transformation detected (+20)');
   }
 
   // 3. Numbers/data present (+20)
@@ -346,12 +353,8 @@ export function determineVisualDecision(
     return 'KEEP_AROLL';
   }
 
-  if (strongEmotion) {
-    if (score >= 45) return 'PUNCH_IN';
-    return 'KEEP_AROLL';
-  }
-
-  if (score >= 70 && hasBrollAssetAvailable) {
+  // When authentic user asset is available, attach visual evidence/overlay
+  if (score >= 40 || brollType === 'proof' || brollType === 'product' || brollType === 'demo') {
     if (brollType === 'product' || brollType === 'demo') return 'PRODUCT_DEMO';
     if (brollType === 'ui' || brollType === 'proof') return 'SCREENSHOT';
     if (brollType === 'data') return 'GRAPH';
@@ -359,8 +362,8 @@ export function determineVisualDecision(
     return 'BROLL';
   }
 
-  if (score >= 45) {
-    return score >= 58 ? 'PUNCH_IN' : 'TEXT_EMPHASIS';
+  if (strongEmotion) {
+    return 'KEEP_AROLL';
   }
 
   return 'KEEP_AROLL';
@@ -1193,17 +1196,19 @@ export function enrichSceneWithDecisionEngine(
   // Determine user asset object if available
   const userAssetMeta = hasValidUserAsset
     ? {
-        type: (scene.visual_evidence?.type === 'SCREEN_DEMO'
-          ? 'screen_recording'
-          : scene.broll?.mediaType === 'video'
-          ? 'screen_recording'
-          : scene.visual_evidence?.type === 'SCREEN_PROOF'
-          ? 'dashboard'
-          : 'screenshot') as any,
+        type: (scene.asset_match?.asset?.type ||
+          (scene.visual_evidence?.type === 'SCREEN_DEMO'
+            ? 'screen_recording'
+            : scene.broll?.mediaType === 'video'
+            ? 'screen_recording'
+            : scene.visual_evidence?.type === 'SCREEN_PROOF'
+            ? 'dashboard'
+            : 'screenshot')) as any,
         mediaType:
           scene.broll?.mediaType ||
+          (scene.asset_match?.asset?.type === 'screen_recording' ? 'video' : undefined) ||
           (scene.broll?.sourceUrl && /\.(mp4|webm|mov)$/i.test(scene.broll.sourceUrl) ? 'video' : 'image'),
-        url: scene.broll?.sourceUrl || scene.visual_evidence?.userAssetUrl,
+        url: scene.asset_match?.asset?.url || scene.broll?.sourceUrl || scene.visual_evidence?.userAssetUrl,
       }
     : null;
 

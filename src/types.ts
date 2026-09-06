@@ -57,6 +57,38 @@ export interface UserProofAsset {
   file?: File;
 }
 
+export interface AssetUsageRecord {
+  lastUsedSceneIndex: number;
+  usageCount: number;
+}
+
+export type AssetUsageHistory = Record<string, AssetUsageRecord>;
+
+export interface RankedAssetCandidate {
+  asset: UserProofAsset;
+  score: number;
+  reason: string;
+  typeScore: number;
+  keywordScore: number;
+  roleScore: number;
+  contextScore: number;
+  reusePenalty: number;
+  matchedKeywords: string[];
+}
+
+export interface AssetMatchResult {
+  asset: UserProofAsset | null;
+  score: number;
+  reason: string;
+  matchedKeywords: string[];
+  typeScore: number;
+  keywordScore: number;
+  roleScore: number;
+  contextScore: number;
+  reusePenalty: number;
+  allRanked?: RankedAssetCandidate[];
+}
+
 export interface VisualEvidenceCard {
   type: EvidenceType;
   title: string;
@@ -398,6 +430,8 @@ export interface SceneEditPlan {
   caption_adaptive_position?: 'LOWER' | 'CENTER-LOW' | 'UPPER-LOW';
   caption_font_size_pt?: number;
   caption_density_status?: 'clean_minimal' | 'selective_emphasis' | 'power_highlight';
+  // Step 9.3 Asset Relevance & Ranking Intelligence fields
+  asset_match?: AssetMatchResult;
 }
 
 export interface StylePresetProfile {

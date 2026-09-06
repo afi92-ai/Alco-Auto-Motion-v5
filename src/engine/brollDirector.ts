@@ -1,12 +1,21 @@
-import { ContentRole, ContentType, VisualIntent, BRollItem, SceneIntelligenceScore, UserProofAsset } from '../types';
-import { EXTENDED_STOCK_CATALOG, StockCatalogItem } from './stockCatalog';
+import {
+  ContentRole,
+  ContentType,
+  VisualIntent,
+  BRollItem,
+  SceneIntelligenceScore,
+  UserProofAsset,
+  AssetUsageHistory,
+  AssetMatchResult,
+} from '../types';
+import { matchAssetForScene } from './assetMatcher';
 
 /**
-  * AI Creative Performance B-Roll Director
-  * Determines visual intent, timing offsets, framing, and semantic search queries
-  * based on the 6-stage marketing framework: HOOK -> PROBLEM -> CURIOSITY -> SOLUTION -> PROOF -> CTA
-  * Prioritizes user-uploaded authentic screenshots/dashboards/products over generic B-roll.
-  */
+ * AI Creative Performance B-Roll Director
+ * Determines visual intent, timing offsets, framing, and overlays
+ * using the centralized Asset Relevance & Ranking Layer.
+ * Prioritizes authentic user assets that meet or exceed the relevance threshold.
+ */
 export function determineBrollDecision(
   role: ContentRole,
   text: string,
@@ -14,13 +23,16 @@ export function determineBrollDecision(
   index: number,
   totalScenes: number,
   contentType: ContentType,
-  userAssets?: UserProofAsset[]
+  userAssets?: UserProofAsset[],
+  history?: AssetUsageHistory,
+  options?: { minRelevanceScore?: number }
 ): {
   intent: VisualIntent;
   broll: BRollItem | null;
   directorNote: string;
+  matchResult?: AssetMatchResult;
 } {
-  // STRICT RULE 2 & 5: If user did NOT upload supporting assets, NO B-roll, stock, or generic illustrations allowed AT ALL!
+  // STRICT RULE: If user did NOT upload supporting assets, NO B-roll or external overlays allowed AT ALL!
   if (!userAssets || userAssets.length === 0) {
     return {
       intent: 'none',
@@ -31,15 +43,17 @@ export function determineBrollDecision(
 
   const textUpper = text.toUpperCase();
 
-  // Helper to find matching user asset by priority asset types
-  const findUserAsset = (types: UserProofAsset['type'][]) => {
-    return userAssets.find((a) => types.includes(a.type)) || null;
-  };
-
-  // 1. HOOK (0-3s Window): Keep 100% Talking Head unless user specifically uploaded a logo/badge
+  // 1. HOOK (0-3s Window): Keep 100% Talking Head unless user specifically uploaded a brand logo/product
   if (index === 0 || role === 'hook') {
-    const userHookAsset = findUserAsset(['logo', 'product']);
-    if (userHookAsset) {
+    const hookMatch = matchAssetForScene(
+      { transcript: text, role, sceneIndex: index, scores, visualIntent: 'product' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['logo', 'product'] }
+    );
+
+    if (hookMatch.asset && hookMatch.score >= (options?.minRelevanceScore ?? 0.45)) {
+      const userHookAsset = hookMatch.asset;
       return {
         intent: 'product',
         broll: {
@@ -57,173 +71,111 @@ export function determineBrollDecision(
           entryTransition: 'zoom_in',
           isUserAsset: true,
         },
-        directorNote: `0-3s Hook Strategy with User Asset: ${userHookAsset.name} displayed as micro PIP overlay.`,
+        directorNote: `0-3s Hook Strategy with User Asset: ${userHookAsset.name} (Relevance: ${hookMatch.score.toFixed(2)}) as micro PIP overlay.`,
+        matchResult: hookMatch,
       };
     }
+
     return {
       intent: 'none',
       broll: null,
       directorNote: '0-3s Hook Rule: 100% direct speaker eye-contact to establish immediate human rapport before introducing overlays.',
+      matchResult: hookMatch,
     };
   }
 
-  // 2. PROBLEM / PAIN AGITATION
+  // 2. Determine target visual intent & preferred types based on scene role & content
+  let targetIntent: VisualIntent = 'none';
+  let preferredTypes: UserProofAsset['type'][] | undefined;
+  let defaultDuration = 2.5;
+  let defaultOffset = 0.2;
+  let entryTransition: 'fade' | 'zoom_in' | 'slide_left' = 'zoom_in';
+  let overlayTag = 'USER ASSET EVIDENCE';
+
   if (role === 'problem' || textUpper.includes('SALAH') || textUpper.includes('BAKAR UANG') || textUpper.includes('RUGI') || textUpper.includes('BONCOS')) {
-    const userProblemAsset = findUserAsset(['screenshot', 'dashboard', 'before_after']);
-    if (userProblemAsset) {
-      return {
-        intent: 'metaphor',
-        broll: {
-          query: userProblemAsset.label || userProblemAsset.name,
-          title: userProblemAsset.name,
-          sourceUrl: userProblemAsset.url,
-          previewUrl: userProblemAsset.url,
-          mediaType: userProblemAsset.type === 'screen_recording' ? 'video' : 'image',
-          visual_intent: 'metaphor',
-          overlay_style: 'pip',
-          opacity: 0.95,
-          startOffset: 0.3,
-          duration: 2.5,
-          badgeTag: userProblemAsset.label || 'USER PROBLEM EVIDENCE',
-          entryTransition: 'fade',
-          isUserAsset: true,
-        },
-        directorNote: `Authentic User Asset Attached: Using uploaded ${userProblemAsset.name} for problem scene.`,
-      };
-    }
+    targetIntent = 'metaphor';
+    preferredTypes = ['screenshot', 'dashboard', 'before_after'];
+    defaultOffset = 0.3;
+    entryTransition = 'fade';
+    overlayTag = 'USER PROBLEM EVIDENCE';
+  } else if (role === 'curiosity' || textUpper.includes('TERNYATA') || textUpper.includes('KUNCINYA') || textUpper.includes('BUKAN') || textUpper.includes('BEFORE AFTER')) {
+    targetIntent = 'contrast';
+    preferredTypes = ['before_after', 'screenshot'];
+    defaultDuration = 2.8;
+    entryTransition = 'slide_left';
+    overlayTag = 'USER COMPARE ASSET';
+  } else if (role === 'proof' || scores.proof_strength >= 7 || /ROAS|CTR|OMSET|DATA|BUKTI|HASIL|%|X|GRAFIK|TEMBUS/i.test(textUpper)) {
+    targetIntent = 'proof';
+    preferredTypes = ['dashboard', 'screenshot'];
+    defaultOffset = 0.0;
+    defaultDuration = 3.2;
+    entryTransition = 'zoom_in';
+    overlayTag = 'REAL DASHBOARD PROOF';
+  } else if (role === 'solution' || textUpper.includes('SOLUSI') || textUpper.includes('MODUL') || textUpper.includes('TEMPLATE') || textUpper.includes('PRODUK') || textUpper.includes('VALIDASI')) {
+    targetIntent = 'product';
+    preferredTypes = ['product', 'screen_recording', 'dashboard'];
+    defaultDuration = 3.0;
+    entryTransition = 'zoom_in';
+    overlayTag = 'REAL PRODUCT DEMO';
+  } else if (role === 'cta' || index === totalScenes - 1) {
+    targetIntent = 'urgency';
+    preferredTypes = ['logo', 'product', 'screenshot'];
+    defaultOffset = 0.3;
+    entryTransition = 'zoom_in';
+    overlayTag = 'BRAND LOGO PROMPT';
+  } else {
+    targetIntent = 'process';
+    preferredTypes = undefined;
   }
 
-  // 3. CURIOSITY / CONTRAST
-  if (role === 'curiosity' || textUpper.includes('TERNYATA') || textUpper.includes('KUNCINYA') || textUpper.includes('BUKAN') || textUpper.includes('BEFORE AFTER')) {
-    const userCompareAsset = findUserAsset(['before_after', 'screenshot']);
-    if (userCompareAsset) {
-      return {
-        intent: 'contrast',
-        broll: {
-          query: userCompareAsset.label || userCompareAsset.name,
-          title: userCompareAsset.name,
-          sourceUrl: userCompareAsset.url,
-          previewUrl: userCompareAsset.url,
-          mediaType: userCompareAsset.type === 'screen_recording' ? 'video' : 'image',
-          visual_intent: 'contrast',
-          overlay_style: 'pip',
-          opacity: 0.95,
-          startOffset: 0.2,
-          duration: 2.8,
-          badgeTag: userCompareAsset.label || 'USER COMPARE ASSET',
-          entryTransition: 'slide_left',
-          isUserAsset: true,
-        },
-        directorNote: `Authentic User Asset Attached: Using uploaded ${userCompareAsset.name} for curiosity comparison.`,
-      };
+  // Evaluate candidate assets with centralized matcher
+  const matchResult = matchAssetForScene(
+    {
+      transcript: text,
+      role,
+      importance: scores.importance,
+      visualIntent: targetIntent,
+      sceneIndex: index,
+      scores,
+    },
+    userAssets,
+    history,
+    {
+      ...options,
+      preferredTypes,
     }
-  }
+  );
 
-  // 4. PROOF / METRICS / VALIDATION
-  if (role === 'proof' || scores.proof_strength >= 7 || /ROAS|CTR|OMSET|DATA|BUKTI|HASIL|%|X|GRAFIK|TEMBUS/i.test(textUpper)) {
-    const userProofAsset = findUserAsset(['dashboard', 'screenshot']);
-    if (userProofAsset) {
-      return {
-        intent: 'proof',
-        broll: {
-          query: userProofAsset.label || userProofAsset.name,
-          title: userProofAsset.name,
-          sourceUrl: userProofAsset.url,
-          previewUrl: userProofAsset.url,
-          mediaType: userProofAsset.type === 'screen_recording' ? 'video' : 'image',
-          visual_intent: 'proof',
-          overlay_style: 'pip',
-          opacity: 0.98,
-          startOffset: 0.0,
-          duration: 3.2,
-          badgeTag: userProofAsset.label || 'REAL DASHBOARD PROOF',
-          entryTransition: 'zoom_in',
-          isUserAsset: true,
-        },
-        directorNote: `Priority User Evidence: Attached authentic screenshot/dashboard (${userProofAsset.name}) to proof scene.`,
-      };
-    }
-  }
-
-  // 5. SOLUTION / PROCESS / PRODUCT
-  if (role === 'solution' || textUpper.includes('SOLUSI') || textUpper.includes('MODUL') || textUpper.includes('TEMPLATE') || textUpper.includes('PRODUK') || textUpper.includes('VALIDASI')) {
-    const userProductAsset = findUserAsset(['product', 'screen_recording', 'dashboard']);
-    if (userProductAsset) {
-      return {
-        intent: 'product',
-        broll: {
-          query: userProductAsset.label || userProductAsset.name,
-          title: userProductAsset.name,
-          sourceUrl: userProductAsset.url,
-          previewUrl: userProductAsset.url,
-          mediaType: userProductAsset.type === 'screen_recording' ? 'video' : 'image',
-          visual_intent: 'product',
-          overlay_style: 'pip',
-          opacity: 0.95,
-          startOffset: 0.2,
-          duration: 3.0,
-          badgeTag: userProductAsset.label || 'REAL PRODUCT DEMO',
-          entryTransition: 'zoom_in',
-          isUserAsset: true,
-        },
-        directorNote: `Priority User Asset: Displaying uploaded product photo (${userProductAsset.name}) during solution presentation.`,
-      };
-    }
-  }
-
-  // 6. CALL TO ACTION (CTA)
-  if (role === 'cta' || index === totalScenes - 1) {
-    const userCtaAsset = findUserAsset(['logo', 'product', 'screenshot']);
-    if (userCtaAsset) {
-      return {
-        intent: 'urgency',
-        broll: {
-          query: userCtaAsset.label || userCtaAsset.name,
-          title: userCtaAsset.name,
-          sourceUrl: userCtaAsset.url,
-          previewUrl: userCtaAsset.url,
-          mediaType: userCtaAsset.type === 'screen_recording' ? 'video' : 'image',
-          visual_intent: 'urgency',
-          overlay_style: 'pip',
-          opacity: 0.95,
-          startOffset: 0.3,
-          duration: 2.5,
-          badgeTag: userCtaAsset.label || 'BRAND LOGO PROMPT',
-          entryTransition: 'zoom_in',
-          isUserAsset: true,
-        },
-        directorNote: `Authentic User Asset Attached: Using uploaded ${userCtaAsset.name} as closing CTA prompt.`,
-      };
-    }
-  }
-
-  // Fallback if user assets exist but none specifically matched this role: use the first available user asset
-  const fallbackUserAsset = userAssets[index % userAssets.length];
-  if (fallbackUserAsset) {
+  // If a qualified asset matched
+  if (matchResult.asset) {
+    const matchedAsset = matchResult.asset;
     return {
-      intent: 'process',
+      intent: targetIntent,
       broll: {
-        query: fallbackUserAsset.label || fallbackUserAsset.name,
-        title: fallbackUserAsset.name,
-        sourceUrl: fallbackUserAsset.url,
-        previewUrl: fallbackUserAsset.url,
-        mediaType: fallbackUserAsset.type === 'screen_recording' ? 'video' : 'image',
-        visual_intent: 'process',
+        query: matchedAsset.label || matchedAsset.name,
+        title: matchedAsset.name,
+        sourceUrl: matchedAsset.url,
+        previewUrl: matchedAsset.url,
+        mediaType: matchedAsset.type === 'screen_recording' ? 'video' : 'image',
+        visual_intent: targetIntent,
         overlay_style: 'pip',
         opacity: 0.95,
-        startOffset: 0.2,
-        duration: 2.5,
-        badgeTag: fallbackUserAsset.label || fallbackUserAsset.name,
-        entryTransition: 'fade',
+        startOffset: defaultOffset,
+        duration: defaultDuration,
+        badgeTag: matchedAsset.label || overlayTag,
+        entryTransition,
         isUserAsset: true,
       },
-      directorNote: `User Asset Attached: Displaying uploaded ${fallbackUserAsset.name}.`,
+      directorNote: `Authentic User Asset Selected: ${matchedAsset.name} (Score: ${matchResult.score.toFixed(2)}). ${matchResult.reason}`,
+      matchResult,
     };
   }
 
+  // Fallback: Relevance score was below threshold (or no suitable match found) -> keep A-roll clean
   return {
     intent: 'none',
     broll: null,
-    directorNote: 'No matching user asset for this scene.',
+    directorNote: `No high-relevance user asset for scene #${index + 1} (${matchResult.reason}). Retaining clean A-roll pacing.`,
+    matchResult,
   };
 }

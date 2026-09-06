@@ -9,6 +9,7 @@ import {
   ContentRole,
   StylePresetProfile,
   UserProofAsset,
+  AssetUsageHistory,
 } from '../types';
 import { calculateSceneIntelligence, calculateOverallPacingProfile } from './scoringEngine';
 import { decideSceneMotion } from './motionDirector';
@@ -22,6 +23,7 @@ import { STYLE_PRESET_PROFILES, getStyleProfile } from './styleProfiles';
 import { analyzeTalkingHeadScene, analyzeProjectTalkingHeadDominance } from './talkingHeadDirector';
 import { analyzeSceneVisualCorrection, summarizeProjectVisualQuality } from './lightingDirector';
 import { enrichSceneWithDecisionEngine } from './decisionEngine';
+import { recordAssetUsage } from './assetMatcher';
 
 export * from './scoringEngine';
 export * from './captionEngine';
@@ -38,6 +40,7 @@ export * from './lightingDirector';
 export * from './outputQualityAuditor';
 export * from './visualDesignAudit';
 export * from './decisionEngine';
+export * from './assetMatcher';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
   clean_creator: {
@@ -158,6 +161,7 @@ export function buildIntelligentEditPlan(
 
   let previousMotion: any = undefined;
   let previousFatigue = 20;
+  let assetUsageHistory: AssetUsageHistory = {};
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -217,7 +221,7 @@ export function buildIntelligentEditPlan(
       captionStyle = 'normal';
     }
 
-    // 4. B-Roll & Visual Intent Decisioning (Prioritizing User Proof Assets)
+    // 4. B-Roll & Visual Intent Decisioning (Centralized Asset Relevance & Ranking Layer)
     const brollDecision = determineBrollDecision(
       role,
       seg.text,
@@ -225,11 +229,28 @@ export function buildIntelligentEditPlan(
       i,
       segments.length,
       contentType,
-      userAssets
+      userAssets,
+      assetUsageHistory
     );
 
-    // 5. Visual Evidence Engine Card Generation (Prioritizing User Proof Assets)
-    const visualEvidence = generateVisualEvidence(role, seg.text, funnelStage, scores.proof_strength, userAssets);
+    // 5. Visual Evidence Engine Card Generation (Centralized Asset Relevance & Ranking Layer)
+    const visualEvidence = generateVisualEvidence(
+      role,
+      seg.text,
+      funnelStage,
+      scores.proof_strength,
+      userAssets,
+      assetUsageHistory,
+      i
+    );
+
+    // Track usage if an asset was matched
+    const matchedAssetId =
+      brollDecision.matchResult?.asset?.id ||
+      (visualEvidence?.userAssetUrl ? userAssets?.find(u => u.url === visualEvidence.userAssetUrl)?.id : undefined);
+    if (matchedAssetId) {
+      assetUsageHistory = recordAssetUsage(assetUsageHistory, matchedAssetId, i);
+    }
 
     // 6. Calculate Editing Rhythm & Pattern Interrupt Cadence
     const editingRhythm = calculateEditingRhythm(role, scores, i, segments.length, contentType, segDur);
@@ -290,6 +311,7 @@ export function buildIntelligentEditPlan(
       editing_rhythm: editingRhythm,
       talking_head_framing: talkingHeadFraming,
       visual_correction: visualCorrection,
+      asset_match: brollDecision.matchResult,
     };
 
     const enrichedScene = enrichSceneWithDecisionEngine(rawScene, i, segments.length, !!(userAssets && userAssets.length > 0), scenes);

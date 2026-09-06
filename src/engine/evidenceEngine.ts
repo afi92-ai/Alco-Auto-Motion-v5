@@ -1,16 +1,28 @@
-import { ContentRole, EvidenceType, VisualEvidenceCard, FunnelStage, UserProofAsset } from '../types';
+import {
+  ContentRole,
+  EvidenceType,
+  VisualEvidenceCard,
+  FunnelStage,
+  UserProofAsset,
+  AssetUsageHistory,
+  AssetMatchResult,
+} from '../types';
+import { matchAssetForScene } from './assetMatcher';
 
 /**
  * Visual Evidence Engine
  * Generates high-impact visual proof & evidence cards for MOFU, BOFU, and Meta Ads direct response videos.
- * Prioritizes user-uploaded authentic screenshots, dashboards, product photos, and before-after assets.
+ * Uses centralized Asset Relevance & Ranking Layer to select authentic user proof assets.
  */
 export function generateVisualEvidence(
   role: ContentRole,
   text: string,
   funnelStage: FunnelStage,
   proofStrength: number,
-  userAssets?: UserProofAsset[]
+  userAssets?: UserProofAsset[],
+  history?: AssetUsageHistory,
+  sceneIndex: number = 0,
+  options?: { minRelevanceScore?: number }
 ): VisualEvidenceCard | null {
   // STRICT RULE: If user did NOT upload supporting assets, DO NOT generate synthetic/stock visual evidence cards!
   if (!userAssets || userAssets.length === 0) {
@@ -19,19 +31,21 @@ export function generateVisualEvidence(
 
   const textUpper = text.toUpperCase();
 
-  // Helper to find relevant user asset by type priority
-  const findUserAsset = (types: UserProofAsset['type'][]) => {
-    return userAssets.find((a) => types.includes(a.type)) || null;
-  };
-
   // 1. SCREEN_PROOF: Real analytics, revenue, ROAS, CTR metrics
   if (
     role === 'proof' ||
     proofStrength >= 7 ||
     /ROAS|CTR|OMSET|PROFIT|5X|10X|90%|JUTA|RIBU|HASIL|BUKTI|TEMBUS|CONVERSION|METRIC|DATA/i.test(textUpper)
   ) {
-    const userProof = findUserAsset(['dashboard', 'screenshot']);
-    if (!userProof) return null;
+    const match = matchAssetForScene(
+      { transcript: text, role: 'proof', sceneIndex, visualIntent: 'proof' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['dashboard', 'screenshot'] }
+    );
+
+    if (!match.asset) return null;
+    const userProof = match.asset;
 
     let metricVal = '5.4x ROAS';
     if (textUpper.includes('10X')) metricVal = '10.2x ROAS';
@@ -42,7 +56,7 @@ export function generateVisualEvidence(
       type: 'SCREEN_PROOF',
       title: userProof.label || userProof.name || 'VERIFIED DASHBOARD ANALYTICS',
       metricValue: metricVal,
-      subtitle: `Authentic Evidence: ${userProof.name}`,
+      subtitle: `Authentic Evidence: ${userProof.name} (Score: ${match.score.toFixed(2)})`,
       badgeTag: 'VERIFIED USER ASSET',
       userAssetUrl: userProof.url,
       userAssetType: userProof.type,
@@ -59,8 +73,15 @@ export function generateVisualEvidence(
     textUpper.includes('CARA LAMA') ||
     textUpper.includes('BEDANYA')
   ) {
-    const userCompare = findUserAsset(['before_after', 'screenshot']);
-    if (!userCompare) return null;
+    const match = matchAssetForScene(
+      { transcript: text, role: 'curiosity', sceneIndex, visualIntent: 'contrast' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['before_after', 'screenshot'] }
+    );
+
+    if (!match.asset) return null;
+    const userCompare = match.asset;
 
     return {
       type: 'SPLIT_COMPARE',
@@ -87,8 +108,15 @@ export function generateVisualEvidence(
     textUpper.includes('TEMPLATE') ||
     textUpper.includes('SYSTEM')
   ) {
-    const userDemo = findUserAsset(['product', 'screen_recording', 'dashboard']);
-    if (!userDemo) return null;
+    const match = matchAssetForScene(
+      { transcript: text, role: 'solution', sceneIndex, visualIntent: 'product' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['product', 'screen_recording', 'dashboard'] }
+    );
+
+    if (!match.asset) return null;
+    const userDemo = match.asset;
 
     return {
       type: 'SCREEN_DEMO',
@@ -110,8 +138,15 @@ export function generateVisualEvidence(
     textUpper.includes('BAKAR') ||
     textUpper.includes('BONCOS')
   ) {
-    const userProblemAsset = findUserAsset(['screenshot', 'dashboard', 'before_after']);
-    if (!userProblemAsset) return null;
+    const match = matchAssetForScene(
+      { transcript: text, role: 'problem', sceneIndex, visualIntent: 'metaphor' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['screenshot', 'dashboard', 'before_after'] }
+    );
+
+    if (!match.asset) return null;
+    const userProblemAsset = match.asset;
 
     return {
       type: 'CALLOUT_POINTER',
@@ -127,8 +162,15 @@ export function generateVisualEvidence(
 
   // 5. OFFER_CARD / CTA_CARD for BOFU & Meta Ads CTA
   if (role === 'cta') {
-    const userLogoOrProduct = findUserAsset(['logo', 'product', 'screenshot']);
-    if (!userLogoOrProduct) return null;
+    const match = matchAssetForScene(
+      { transcript: text, role: 'cta', sceneIndex, visualIntent: 'urgency' },
+      userAssets,
+      history,
+      { ...options, preferredTypes: ['logo', 'product', 'screenshot'] }
+    );
+
+    if (!match.asset) return null;
+    const userLogoOrProduct = match.asset;
 
     return {
       type: 'CTA_CARD',
