@@ -551,7 +551,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         const cat = classifyMarketingToken(word, roleForClassify);
         const isMatched = highlights.some(hw => hw.includes(cleanWord) || cleanWord.includes(hw));
 
-        if (isMatched || cat !== 'general') {
+        const shouldHighlight = isMatched || (highlights.length === 0 && cat !== 'general');
+
+        if (shouldHighlight) {
           const regex = new RegExp(`\\b(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i');
           const colorInfo = getHighlightColorCategory(cat, isHook);
           const highlightAss = `{\\c${colorInfo.assColorCode}}{\\b1}`;

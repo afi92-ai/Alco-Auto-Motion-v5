@@ -69,11 +69,16 @@ export function classifyMarketingToken(word: string, sceneRole?: ContentRole): M
     return 'urgency_cta';
   }
 
-  // Fallback to scene role defaults if specific keyword matches scene intent
-  if (sceneRole === 'problem' && (clean.length >= 4 || /\d/.test(clean))) return 'problem';
-  if (sceneRole === 'proof' && (clean.length >= 4 || /\d/.test(clean))) return 'benefit_result';
-  if (sceneRole === 'solution' && (clean.length >= 4 || /\d/.test(clean))) return 'offer_mechanism';
-  if (sceneRole === 'cta' && (clean.length >= 4 || /\d/.test(clean))) return 'urgency_cta';
+  // If word has digits or percentage, classify as benefit_result/metric
+  if (/\d/.test(clean) || clean.includes('%')) {
+    return 'benefit_result';
+  }
+
+  // Fallback to scene role defaults only if word is a concrete semantic token (not generic stopword)
+  if (sceneRole === 'problem' && PROBLEM_WORDS.has(clean)) return 'problem';
+  if (sceneRole === 'proof' && (BENEFIT_RESULT_WORDS.has(clean) || METRIC_UNIT_WORDS.has(clean))) return 'benefit_result';
+  if (sceneRole === 'solution' && OFFER_MECHANISM_WORDS.has(clean)) return 'offer_mechanism';
+  if (sceneRole === 'cta' && URGENCY_CTA_WORDS.has(clean)) return 'urgency_cta';
 
   return 'general';
 }
@@ -151,8 +156,11 @@ export function extractPowerHighlightWords(
       continue;
     }
 
-    // Specific marketing semantic categories
-    if (BENEFIT_RESULT_WORDS.has(w)) {
+    // Specific marketing semantic categories with impact weighting
+    const HIGH_IMPACT_TERMS = new Set(['BONCOS', 'RUGI', 'FATAL', 'GAGAL', 'HANCUR', 'PROFIT', 'ROAS', 'OMSET', 'CLOSING', 'SUKSES', 'DISKON', 'GRATIS', 'RAHASIA', 'SEKARANG']);
+    if (HIGH_IMPACT_TERMS.has(w)) {
+      scores[i] = 78;
+    } else if (BENEFIT_RESULT_WORDS.has(w)) {
       scores[i] = 70;
     } else if (PROBLEM_WORDS.has(w)) {
       scores[i] = 68;
