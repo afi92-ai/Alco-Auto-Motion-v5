@@ -430,6 +430,10 @@ export interface SceneEditPlan {
   caption_adaptive_position?: 'LOWER' | 'CENTER-LOW' | 'UPPER-LOW';
   caption_font_size_pt?: number;
   caption_density_status?: 'clean_minimal' | 'selective_emphasis' | 'power_highlight';
+  // Step 9.2.2 Caption Sync & Speech Boundary Tracking
+  speech_start?: number;
+  speech_end?: number;
+  speech_duration?: number;
   // Step 9.3 Asset Relevance & Ranking Intelligence fields
   asset_match?: AssetMatchResult;
 }

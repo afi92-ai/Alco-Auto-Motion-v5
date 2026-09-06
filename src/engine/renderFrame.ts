@@ -144,12 +144,16 @@ export function drawCaptionsOnCanvas(
   sceneIndex: number,
   isSafeMode: boolean = false
 ) {
-  if (!scene.caption) return;
+  if (!scene.caption || scene.role === 'continuation') return;
 
-  const sceneStart = scene.start;
-  const sceneEnd = scene.end;
-  const sceneDur = Math.max(0.1, sceneEnd - sceneStart);
-  const sceneElapsed = Math.max(0, currentTime - sceneStart);
+  const speechStart = typeof scene.speech_start === 'number' ? scene.speech_start : scene.start;
+  const speechEnd = typeof scene.speech_end === 'number' ? scene.speech_end : scene.end;
+  const speechDur = typeof scene.speech_duration === 'number' && scene.speech_duration > 0
+    ? scene.speech_duration
+    : Math.max(0.1, speechEnd - speechStart);
+  const speechElapsed = currentTime - speechStart;
+
+  if (speechElapsed < -0.05 || speechElapsed > speechDur + 0.15) return;
 
   const cleanCap = sanitizeCaptionText(scene.caption || '');
   const text = cleanCap.toUpperCase();
@@ -157,13 +161,15 @@ export function drawCaptionsOnCanvas(
   const role = scene.role || 'explanation';
   const displayMode = scene.caption_display_mode || determineCaptionDisplayMode(role, grammar, scene.visual_evidence?.type, sceneIndex);
 
-  const { activeChunk, activeWordIdx } = getActiveCaptionChunk(
+  const { activeChunk, activeWordIdx, isWithinSpeechWindow } = getActiveCaptionChunk(
     text,
     scene.word_timings,
-    sceneElapsed,
-    sceneDur,
+    Math.max(0, speechElapsed),
+    speechDur,
     displayMode
   );
+
+  if (!isWithinSpeechWindow && (speechElapsed < 0 || speechElapsed > speechDur)) return;
 
   const wrappedLines = activeChunk.wrappedLines;
   if (!wrappedLines || wrappedLines.length === 0) return;

@@ -548,42 +548,25 @@ export function calculateCaptionLineWrapping(
 }
 
 /**
- * High-Retention Dynamic Time-Chunking Engine for Short Video Captions:
- * Divides spoken text into short 3-5 word active pages/chunks (max 2 lines, 2-3 words per line).
- * As voice playback progresses, the screen automatically updates to the current 3-5 word chunk,
- * maintaining high viewer retention, fast readability, zero screen clutter, and 100% audio sync.
+ * Step 9.2.2: Unified Dynamic Caption Chunker (Single Source of Truth)
+ * Builds structured caption chunks using word_timings, phonetic weights, and punctuation awareness.
+ * Shared directly across PreviewPlayer (UI playback) and mp4Renderer (burn-in ASS subtitle generation).
  */
-export function getActiveCaptionChunk(
+export function buildCaptionChunks(
   text: string,
   wordTimings: WordTiming[] | undefined,
-  sceneElapsed: number,
-  sceneDur: number,
+  speechDur: number,
   displayMode: string = 'clean_floating'
-): {
-  activeChunk: CaptionChunk;
-  activeWordIdx: number;
-  totalChunks: number;
-  allChunks: CaptionChunk[];
-} {
+): CaptionChunk[] {
   const clean = (text || '').replace(/\s+/g, ' ').trim();
   if (!clean) {
-    const emptyChunk: CaptionChunk = {
-      chunkIndex: 0,
-      startOffset: 0,
-      endOffset: sceneDur,
-      words: [],
-      wrappedLines: [],
-      text: '',
-    };
-    return { activeChunk: emptyChunk, activeWordIdx: 0, totalChunks: 1, allChunks: [emptyChunk] };
+    return [];
   }
 
   const rawWords = clean.split(' ').filter(Boolean);
   const totalWords = rawWords.length;
-  const safeDur = Math.max(0.1, sceneDur);
-
-  // Active word index calculation
-  const activeWordIdx = getActiveWordIndex(wordTimings, sceneElapsed, totalWords, safeDur);
+  if (totalWords === 0) return [];
+  const safeDur = Math.max(0.1, speechDur);
 
   // Determine max words per chunk & max words per line based on display mode
   // Normal scenes: max 3-5 words per chunk (wrapped into 1-2 lines of 2-3 words)
@@ -655,8 +638,8 @@ export function getActiveCaptionChunk(
 
     chunks.push({
       chunkIndex,
-      startOffset,
-      endOffset,
+      startOffset: Math.min(safeDur, Math.max(0, Number(startOffset.toFixed(3)))),
+      endOffset: Math.min(safeDur, Math.max(startOffset, Number(endOffset.toFixed(3)))),
       words: chunkWords,
       wrappedLines,
       text: chunkText,
@@ -679,7 +662,7 @@ export function getActiveCaptionChunk(
         const firstWords = chk.words.slice(0, midWordIdx);
         const secondWords = chk.words.slice(midWordIdx);
 
-        const splitOffset = Number((chk.startOffset + dur * (firstWords.length / chk.words.length)).toFixed(2));
+        const splitOffset = Number((chk.startOffset + dur * (firstWords.length / chk.words.length)).toFixed(3));
         const firstText = firstWords.map((w) => w.word).join(' ');
         const secondText = secondWords.map((w) => w.word).join(' ');
 
@@ -727,17 +710,71 @@ export function getActiveCaptionChunk(
     chunks.push(...refinedChunks);
   }
 
+  return chunks;
+}
+
+/**
+ * High-Retention Dynamic Time-Chunking Engine for Short Video Captions:
+ * Divides spoken text into short 3-5 word active pages/chunks (max 2 lines, 2-3 words per line).
+ * As voice playback progresses, the screen automatically updates to the current 3-5 word chunk,
+ * maintaining high viewer retention, fast readability, zero screen clutter, and 100% audio sync.
+ */
+export function getActiveCaptionChunk(
+  text: string,
+  wordTimings: WordTiming[] | undefined,
+  sceneElapsed: number,
+  sceneDur: number,
+  displayMode: string = 'clean_floating'
+): {
+  activeChunk: CaptionChunk;
+  activeWordIdx: number;
+  totalChunks: number;
+  allChunks: CaptionChunk[];
+  isWithinSpeechWindow: boolean;
+} {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  const safeDur = Math.max(0.1, sceneDur);
+
+  if (!clean) {
+    const emptyChunk: CaptionChunk = {
+      chunkIndex: 0,
+      startOffset: 0,
+      endOffset: safeDur,
+      words: [],
+      wrappedLines: [],
+      text: '',
+    };
+    return { activeChunk: emptyChunk, activeWordIdx: -1, totalChunks: 0, allChunks: [emptyChunk], isWithinSpeechWindow: false };
+  }
+
+  const rawWords = clean.split(' ').filter(Boolean);
+  const totalWords = rawWords.length;
+
+  // Active word index calculation
+  const activeWordIdx = getActiveWordIndex(wordTimings, sceneElapsed, totalWords, safeDur);
+
+  // Build unified chunks
+  const chunks = buildCaptionChunks(clean, wordTimings, safeDur, displayMode);
+
   if (chunks.length === 0) {
     const fallbackChunk: CaptionChunk = {
       chunkIndex: 0,
       startOffset: 0,
       endOffset: safeDur,
       words: rawWords.map((w, globalIndex) => ({ word: w, globalIndex })),
-      wrappedLines: calculateCaptionLineWrapping(clean, maxWordsPerLine, allowThreeLines),
+      wrappedLines: calculateCaptionLineWrapping(clean, 3, false),
       text: clean,
     };
-    return { activeChunk: fallbackChunk, activeWordIdx, totalChunks: 1, allChunks: [fallbackChunk] };
+    return { activeChunk: fallbackChunk, activeWordIdx, totalChunks: 1, allChunks: [fallbackChunk], isWithinSpeechWindow: true };
   }
+
+  const firstStart = chunks[0].startOffset;
+  const lastEnd = chunks[chunks.length - 1].endOffset;
+
+  // Step 9.2.2 Silence Gap Handling:
+  // If sceneElapsed is strictly outside the speech/caption window (before start or after last speech ending),
+  // isWithinSpeechWindow is false so preview player will not display trailing ghost captions during visual gaps.
+  const isWithinSpeechWindow = sceneElapsed >= (firstStart - 0.05) && sceneElapsed <= (lastEnd + 0.15);
 
   // Find active chunk at sceneElapsed
   let activeChunk = chunks[0];
@@ -748,16 +785,16 @@ export function getActiveCaptionChunk(
       break;
     }
     if (sceneElapsed > chk.endOffset) {
-      activeChunk = chk; // keep last matched chunk if past end offset
+      activeChunk = chk; // keep last matched chunk if past end offset within speech window
     }
   }
 
-
   return {
     activeChunk,
-    activeWordIdx,
+    activeWordIdx: isWithinSpeechWindow ? activeWordIdx : -1,
     totalChunks: chunks.length,
     allChunks: chunks,
+    isWithinSpeechWindow,
   };
 }
 

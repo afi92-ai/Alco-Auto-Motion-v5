@@ -683,12 +683,19 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
 
   // Render Real-Time Dynamic Short Video Captions (Face-Safe, Max 2 Lines, Adaptive Safe Zone)
   const renderActiveCaptions = () => {
-    if (viewMode === 'raw' || !currentScene?.caption) return null;
+    if (viewMode === 'raw' || !currentScene?.caption || currentScene.role === 'continuation') return null;
 
-    const sceneStart = currentScene.start;
-    const sceneEnd = currentScene.end;
-    const sceneDur = Math.max(0.1, sceneEnd - sceneStart);
-    const sceneElapsed = Math.max(0, currentTime - sceneStart);
+    const speechStart = typeof currentScene.speech_start === 'number' ? currentScene.speech_start : currentScene.start;
+    const speechEnd = typeof currentScene.speech_end === 'number' ? currentScene.speech_end : currentScene.end;
+    const speechDur = typeof currentScene.speech_duration === 'number' && currentScene.speech_duration > 0
+      ? currentScene.speech_duration
+      : Math.max(0.1, speechEnd - speechStart);
+    const speechElapsed = currentTime - speechStart;
+
+    // Silence gap & boundary protection: do not display captions during leading/trailing visual gap
+    if (speechElapsed < -0.05 || speechElapsed > speechDur + 0.15) {
+      return null;
+    }
 
     const text = currentScene.caption;
     const grammar = currentScene.caption_grammar || 'KEYWORD_EMPHASIS';
@@ -698,13 +705,17 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
     const displayMode = currentScene.caption_display_mode || determineCaptionDisplayMode(role, grammar, currentScene.visual_evidence?.type, activeSceneIndex);
 
     // Dynamic Time-Chunking: Returns active 3-5 word page (wrapped in max 2 lines, 2-3 words per line)
-    const { activeChunk, activeWordIdx } = getActiveCaptionChunk(
+    const { activeChunk, activeWordIdx, isWithinSpeechWindow } = getActiveCaptionChunk(
       text,
       currentScene.word_timings,
-      sceneElapsed,
-      sceneDur,
+      Math.max(0, speechElapsed),
+      speechDur,
       displayMode
     );
+
+    if (!isWithinSpeechWindow && (speechElapsed < 0 || speechElapsed > speechDur)) {
+      return null;
+    }
 
     const wrappedLines = activeChunk.wrappedLines;
 

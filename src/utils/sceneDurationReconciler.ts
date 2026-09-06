@@ -30,12 +30,25 @@ export function reconcileScenesToSourceDuration(
 ): SceneReconciliationResult {
   const safeSourceDuration = Math.max(0.5, Number(sourceDuration) || 0);
 
-  const rawList: SceneEditPlan[] = (scenes || []).map((s, idx) => ({
-    ...s,
-    id: typeof s.id === 'number' ? s.id : idx,
-    start: Number(s.start) || 0,
-    end: Number(s.end) || 0,
-  }));
+  const rawList: SceneEditPlan[] = (scenes || []).map((s, idx) => {
+    const rawStart = Number(s.start) || 0;
+    const rawEnd = Number(s.end) || 0;
+    const origSpeechStart = typeof s.speech_start === 'number' ? s.speech_start : rawStart;
+    const origSpeechEnd = typeof s.speech_end === 'number' ? s.speech_end : rawEnd;
+    const origSpeechDur = typeof s.speech_duration === 'number' && s.speech_duration > 0
+      ? s.speech_duration
+      : Math.max(0.1, origSpeechEnd - origSpeechStart);
+
+    return {
+      ...s,
+      id: typeof s.id === 'number' ? s.id : idx,
+      start: rawStart,
+      end: rawEnd,
+      speech_start: origSpeechStart,
+      speech_end: origSpeechEnd,
+      speech_duration: origSpeechDur,
+    };
+  });
 
   // Calculate original planned duration
   let originalPlannedDuration = 0;

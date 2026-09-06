@@ -20,6 +20,8 @@ import {
   calculateCaptionFontSize,
   getHighlightColorCategory,
   classifyMarketingToken,
+  buildCaptionChunks,
+  determineCaptionDisplayMode,
 } from '../engine/captionEngine';
 
 const execFileAsync = promisify(execFile);
@@ -257,65 +259,18 @@ export function getRenderedFilePath(renderId: string): string | null {
 
 /**
  * Format timestamp in seconds into ASS Subtitle format: H:MM:SS.cs (e.g. 0:00:02.40)
+ * Step 9.2.2: True Centisecond Rounding with proper carry propagation
  */
-function formatAssTime(seconds: number): string {
-  const safeSec = Math.max(0, seconds);
-  const hrs = Math.floor(safeSec / 3600);
-  const mins = Math.floor((safeSec % 3600) / 60);
-  const secs = Math.floor(safeSec % 60);
-  const cs = Math.floor((safeSec - Math.floor(safeSec)) * 100);
+export function formatAssTime(seconds: number): string {
+  const safeSec = Math.max(0, Number(seconds) || 0);
+  const totalCs = Math.round(safeSec * 100);
+  const cs = totalCs % 100;
+  const totalSecs = Math.floor(totalCs / 100);
+  const secs = totalSecs % 60;
+  const totalMins = Math.floor(totalSecs / 60);
+  const mins = totalMins % 60;
+  const hrs = Math.floor(totalMins / 60);
   return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
-}
-
-/**
- * Helper to split a long caption into 3-5 word punchy chunks with maximum 1-2 lines per chunk
- * Enforces hard limit of 3.5s per chunk duration while preserving transcript word order & syncing with voice.
- */
-function splitCaptionIntoChunks(text: string, sceneStart: number, sceneEnd: number): Array<{ start: number; end: number; text: string; rawWords: string[] }> {
-  const words = text.trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
-  if (words.length === 0) return [];
-
-  const sceneDuration = Math.max(0.6, sceneEnd - sceneStart);
-  const HARD_LIMIT_SEC = 3.5;
-  const minChunksForDuration = Math.ceil(sceneDuration / HARD_LIMIT_SEC);
-
-  // Target 3-5 words per chunk, max 2 lines
-  const defaultNumChunks = words.length <= 4 ? 1 : Math.ceil(words.length / 4);
-  const totalChunksNeeded = Math.min(words.length, Math.max(defaultNumChunks, minChunksForDuration));
-
-  const chunks: string[][] = [];
-  const baseSize = Math.floor(words.length / totalChunksNeeded);
-  let remainder = words.length % totalChunksNeeded;
-
-  let wordIdx = 0;
-  for (let c = 0; c < totalChunksNeeded; c++) {
-    const size = baseSize + (remainder > 0 ? 1 : 0);
-    if (remainder > 0) remainder--;
-    chunks.push(words.slice(wordIdx, wordIdx + size));
-    wordIdx += size;
-  }
-
-  const chunkDuration = sceneDuration / chunks.length;
-  return chunks.map((chunkWords, idx) => {
-    const start = sceneStart + idx * chunkDuration;
-    const end = idx === chunks.length - 1 ? sceneEnd : sceneStart + (idx + 1) * chunkDuration;
-
-    // Wrap chunk words into max 2 lines (2-3 words per line)
-    let wrappedText = '';
-    if (chunkWords.length <= 3) {
-      wrappedText = chunkWords.join(' ');
-    } else {
-      const half = Math.ceil(chunkWords.length / 2);
-      wrappedText = chunkWords.slice(0, half).join(' ') + '\\N' + chunkWords.slice(half).join(' ');
-    }
-
-    return {
-      start,
-      end,
-      text: wrappedText,
-      rawWords: chunkWords,
-    };
-  });
 }
 
 /**
@@ -513,14 +468,26 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       }
     }
 
-    // 2. Adaptive Subtitles (1-2 lines per chunk, 3-5 words max, Step 9.2 Intelligence)
+    // 2. Adaptive Subtitles (1-2 lines per chunk, 3-5 words max, Step 9.2 & 9.2.2 Intelligence)
     const rawCaption = sanitizeCaptionText(scene.caption || '').trim();
-    if (!rawCaption) return;
+    if (!rawCaption || scene.role === 'continuation') return;
+
+    const speechStart = typeof scene.speech_start === 'number' ? scene.speech_start : Number(scene.start) || 0;
+    const speechEnd = typeof scene.speech_end === 'number' ? scene.speech_end : Number(scene.end) || speechStart + 3;
+    const speechDur = typeof scene.speech_duration === 'number' && scene.speech_duration > 0
+      ? scene.speech_duration
+      : Math.max(0.1, speechEnd - speechStart);
 
     const hasUpperHead = shouldRenderUpperHeadline(scene);
     const hasEvidence = Boolean(scene.visual_evidence);
     const hasBrollMedia = Boolean(scene.broll);
     const adaptivePosition = scene.caption_adaptive_position || resolveCaptionAdaptivePosition(scene, hasUpperHead, hasEvidence, hasBrollMedia);
+    const displayMode = scene.caption_display_mode || determineCaptionDisplayMode(
+      scene.role || 'explanation',
+      scene.caption_grammar || 'KEYWORD_EMPHASIS',
+      scene.visual_evidence?.type,
+      sIdx
+    );
 
     // Style resolution based on adaptive position & scene role
     const posNorm = String(adaptivePosition || 'LOWER').toUpperCase();
@@ -531,25 +498,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       styleName = 'Caption_UpperLow';
     } else if (isHook) {
       styleName = 'Caption_Hook';
-    } else if (scene.caption_display_mode === 'proof_badge' || isProof) {
+    } else if (displayMode === 'proof_badge' || isProof) {
       styleName = 'Caption_Proof';
-    } else if (scene.caption_display_mode === 'cta_emphasis' || isCTA) {
+    } else if (displayMode === 'cta_emphasis' || isCTA) {
       styleName = 'Caption_CTA';
     }
 
-    const chunks = splitCaptionIntoChunks(rawCaption, start, end);
+    // Step 9.2.2: Single Source of Truth for chunking and timing
+    const chunks = buildCaptionChunks(rawCaption, scene.word_timings, speechDur, displayMode);
     const highlights = (scene.highlight_words || []).map(h => h.toLowerCase().trim()).filter(Boolean);
 
     chunks.forEach((chunk) => {
-      let assText = chunk.text;
+      const absoluteChunkStart = speechStart + chunk.startOffset;
+      const absoluteChunkEnd = speechStart + chunk.endOffset;
+
+      // Join wrapped lines with ASS newline tag \N
+      let assText = chunk.wrappedLines.map(l => l.text).join('\\N');
       let highlightedCount = 0;
 
-      chunk.rawWords.forEach((word) => {
+      chunk.words.forEach((wObj) => {
         if (highlightedCount >= 3) return;
+        const word = wObj.word;
+        const wt = scene.word_timings?.[wObj.globalIndex];
         const cleanWord = word.replace(/[^a-zA-Z0-9%]/g, '').toLowerCase();
         const roleForClassify = (scene.role || (isHook ? 'hook' : 'explanation')) as any;
-        const cat = classifyMarketingToken(word, roleForClassify);
-        const isMatched = highlights.some(hw => hw.includes(cleanWord) || cleanWord.includes(hw));
+        const cat = wt?.marketingCategory || classifyMarketingToken(word, roleForClassify);
+        const isMatched = highlights.some(hw => hw.includes(cleanWord) || cleanWord.includes(hw)) || Boolean(wt?.isHighlight);
 
         const shouldHighlight = isMatched || (highlights.length === 0 && cat !== 'general');
 
@@ -571,7 +545,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         assPosPrefix = `{\\an2\\pos(${Math.round(playWidth / 2)},${yPx})}`;
       }
 
-      ass += `Dialogue: 0,${formatAssTime(chunk.start)},${formatAssTime(chunk.end)},${styleName},,0,0,0,,${assPosPrefix}${assText}\n`;
+      ass += `Dialogue: 0,${formatAssTime(absoluteChunkStart)},${formatAssTime(absoluteChunkEnd)},${styleName},,0,0,0,,${assPosPrefix}${assText}\n`;
     });
   });
 
