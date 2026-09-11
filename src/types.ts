@@ -345,6 +345,23 @@ export interface EditingRhythmPlan {
   reason: string;
 }
 
+// Step 9.5B.3 Minimum Readable Visual Hold contracts
+export interface EvidenceHoldWindow {
+  holdRequired: boolean;
+  holdStartSec: number;
+  holdUntilSec: number;
+  minimumReadableDurationMs: number;
+  sourceSceneEndSec: number;
+  canExtendWithinTimeline: boolean;
+  reason: string;
+}
+
+export interface EvidenceResolution {
+  scene: SceneEditPlan | null;
+  isCarriedOver: boolean;
+  holdWindow: EvidenceHoldWindow | null;
+}
+
 // Step 9.5B.2 Shared Runtime Rhythm Directive contract
 export interface RuntimeRhythmDirective {
   effectiveMotionScale: number;

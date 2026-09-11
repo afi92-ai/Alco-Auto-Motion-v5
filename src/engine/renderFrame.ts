@@ -11,6 +11,7 @@ import {
   getRuntimeRhythmDirective,
   getRhythmAdjustedTransition,
   isEvidenceHoldActive,
+  resolveEvidenceSceneForTime,
 } from './editingRhythmRuntime';
 
 export interface PreloadedAssets {
@@ -422,10 +423,13 @@ export function drawVisualEvidenceOverlay(
   scene: SceneEditPlan,
   preloadedImages?: Record<string, HTMLImageElement>,
   isSafeMode: boolean = false,
-  currentTime?: number
+  currentTime?: number,
+  isCarriedOver: boolean = false
 ) {
   if (!scene.visual_evidence) return;
-  if (!shouldRenderEvidenceLayer(scene, currentTime) && !isEvidenceHoldActive(scene, currentTime || 0)) return; // Step 9.4B.2 & 9.5B.2: Hook focal lock delay & evidence hold
+  if (!isCarriedOver) {
+    if (!shouldRenderEvidenceLayer(scene, currentTime) && !isEvidenceHoldActive(scene, currentTime || 0)) return; // Step 9.4B.2 & 9.5B.2: Hook focal lock delay & evidence hold
+  }
   const ev = scene.visual_evidence;
   const evImg = preloadedImages?.[scene.id];
 
@@ -685,7 +689,17 @@ export function renderFrameToCanvas(
   drawBrollOverlay(ctx, scene, preloadedAssets?.brollImages, isSafeMode, currentTime);
 
   // 5. Draw Visual Evidence Overlay Cards (zero shadowBlur in Safe Mode)
-  drawVisualEvidenceOverlay(ctx, scene, preloadedAssets?.evidenceImages, isSafeMode, currentTime);
+  const evidenceRes = resolveEvidenceSceneForTime(project.scenes, activeIdx, currentTime);
+  if (evidenceRes.scene) {
+    drawVisualEvidenceOverlay(
+      ctx,
+      evidenceRes.scene,
+      preloadedAssets?.evidenceImages,
+      isSafeMode,
+      currentTime,
+      evidenceRes.isCarriedOver
+    );
+  }
 
   // 6. Draw Dynamic Captions with Active Highlight (zero shadowBlur in Safe Mode)
   drawCaptionsOnCanvas(ctx, scene, currentTime, project, activeIdx, isSafeMode);

@@ -28,6 +28,7 @@ import {
   getRuntimeRhythmDirective,
   getRhythmAdjustedTransition,
   isEvidenceHoldActive,
+  resolveEvidenceSceneForTime,
 } from '../engine/editingRhythmRuntime';
 
 interface PreviewPlayerProps {
@@ -394,9 +395,14 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
 
     // Render Visual Evidence Overlay Cards (Sleek, Compact & Non-Intrusive)
     const renderVisualEvidenceOverlay = () => {
-      if (viewMode === 'raw' || !currentScene?.visual_evidence || !currentScene.visual_evidence.userAssetUrl) return null;
-      if (!shouldRenderEvidenceLayer(currentScene, currentTime) && !isEvidenceHoldActive(currentScene, currentTime)) return null;
-      const ev = currentScene.visual_evidence;
+      const evidenceRes = resolveEvidenceSceneForTime(scenes, activeSceneIndex, currentTime);
+      const activeEvidenceScene = evidenceRes.scene;
+      if (viewMode === 'raw' || !activeEvidenceScene?.visual_evidence || !activeEvidenceScene.visual_evidence.userAssetUrl) return null;
+
+      if (!evidenceRes.isCarriedOver) {
+        if (!shouldRenderEvidenceLayer(activeEvidenceScene, currentTime) && !isEvidenceHoldActive(activeEvidenceScene, currentTime)) return null;
+      }
+      const ev = activeEvidenceScene.visual_evidence;
       const assetUrl = ev.userAssetUrl;
 
       if (ev.type === 'SCREEN_PROOF') {

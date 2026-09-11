@@ -28,6 +28,7 @@ import {
   getRhythmAdjustedTransition,
   getRhythmFilterExpression,
   isEvidenceHoldActive,
+  getEvidenceHoldWindow,
 } from '../engine/editingRhythmRuntime';
 
 const execFileAsync = promisify(execFile);
@@ -1247,6 +1248,14 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
           if (sc.composition_profile?.hookFocalLockActive && sc.composition_profile?.suppressedElements?.includes('SECONDARY_CARDS_IN_HOOK_WINDOW')) {
             const lockDur = sc.composition_profile.hookFocalLockDurationSec || 1.2;
             assetStart = Math.min(assetEnd, assetStart + lockDur);
+          }
+
+          // Step 9.5B.3: Minimum Readable Visual Hold for Visual Evidence
+          if (sc.visual_evidence) {
+            const holdWindow = getEvidenceHoldWindow(sc, scenes, sIdx, targetDuration);
+            if (holdWindow.holdRequired && holdWindow.canExtendWithinTimeline) {
+              assetEnd = Math.min(targetDuration, holdWindow.holdUntilSec);
+            }
           }
 
           if (isTH && requestedStyle === 'full') {

@@ -22,6 +22,8 @@ import {
   MotionBudget,
   RefreshStrategy,
   TransitionType,
+  EvidenceHoldWindow,
+  EvidenceResolution,
 } from '../types';
 import { clampScale } from '../config/talkingHeadMotionConfig';
 import { isHookFocalLockActive, SceneCompositionProfile } from './sceneCompositionEngine';
@@ -442,4 +444,286 @@ export function getRhythmFilterExpression(
     motionMultiplier: motionMult,
     suppressAggressiveMotion: directive.suppressAggressiveMotion,
   };
+}
+
+// =========================================================================
+// STEP 9.5B.3: MINIMUM READABLE VISUAL HOLD & CONFLICT RESOLUTION
+// =========================================================================
+
+/**
+ * Maximum additional hold extension permitted beyond the source scene's end.
+ * Safety ceiling to prevent unbounded visual carry-overs if duration metadata is malformed.
+ */
+export const MAX_EXTRA_HOLD_SEC = 2.5;
+
+/**
+ * Shared Conflict Resolution for Evidence Hold (Step 9.5B.3):
+ * Determines whether visual evidence from a source scene can safely carry over
+ * into a subsequent target scene without colliding with primary visual anchors.
+ *
+ * Rules:
+ * - NEVER bleed into: hook, proof, demo, offer, cta.
+ * - NEVER bleed into scenes where primary attention is:
+ *   HOOK_SPEAKER_FACE, EVIDENCE_DASHBOARD, PRODUCT_DEMO, OFFER_VALUE_STACK, CTA_ACTION_BADGE.
+ * - NEVER bleed into scenes with Hook Focal Lock active.
+ * - NEVER bleed into scenes that already have their own visual evidence or primary visual asset.
+ * - NEVER bleed into scenes with full-screen overlay (broll overlay_style === 'full').
+ * - Compatible with: problem, agitate, insight, solution, benefit, generic explanation.
+ */
+export function canCarryEvidenceHoldIntoScene(
+  sourceScene: Partial<SceneEditPlan>,
+  targetScene: Partial<SceneEditPlan>
+): boolean {
+  if (!targetScene) return false;
+
+  const targetRole = String(targetScene.adRole || targetScene.role || '').toLowerCase();
+  const blockedRoles = ['hook', 'proof', 'demo', 'offer', 'cta'];
+  if (blockedRoles.includes(targetRole)) {
+    return false;
+  }
+
+  const compProfile = targetScene.composition_profile as SceneCompositionProfile | undefined;
+  const primaryAttn = compProfile?.primaryAttention;
+  const blockedAttentions = [
+    'HOOK_SPEAKER_FACE',
+    'EVIDENCE_DASHBOARD',
+    'PRODUCT_DEMO',
+    'OFFER_VALUE_STACK',
+    'CTA_ACTION_BADGE',
+  ];
+  if (primaryAttn && blockedAttentions.includes(primaryAttn)) {
+    return false;
+  }
+
+  // Hook focal lock protection
+  if (compProfile?.hookFocalLockActive) {
+    return false;
+  }
+
+  // Target scene already has its own visual evidence
+  if (
+    targetScene.visual_evidence &&
+    (targetScene.visual_evidence.userAssetUrl || targetScene.visual_evidence.title)
+  ) {
+    return false;
+  }
+
+  // Full-screen B-roll would collide with or obscure evidence card
+  if (targetScene.broll?.overlay_style === 'full') {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Resolves the deterministic hold window for a scene's visual evidence (Step 9.5B.3).
+ * Ensures proof and demo assets remain visible for minimumReadableDurationMs
+ * when the timeline and scene compatibility allow, capped by MAX_EXTRA_HOLD_SEC (2.5s).
+ *
+ * Strict Rule: Audio timeline, speech narration, and scene boundaries remain completely untouched.
+ */
+export function getEvidenceHoldWindow(
+  scene: Partial<SceneEditPlan>,
+  allScenes?: SceneEditPlan[],
+  sceneIndex?: number,
+  totalDuration?: number
+): EvidenceHoldWindow {
+  const holdStartSec = scene.start || 0;
+  const sourceSceneEndSec = scene.end !== undefined ? scene.end : holdStartSec;
+  const sourceDurationSec = Math.max(0, sourceSceneEndSec - holdStartSec);
+
+  // 1. Evidence Existence Check
+  const hasVisualEvidence = Boolean(
+    scene.visual_evidence &&
+      (scene.visual_evidence.userAssetUrl || scene.visual_evidence.title)
+  );
+
+  if (!hasVisualEvidence) {
+    return {
+      holdRequired: false,
+      holdStartSec,
+      holdUntilSec: sourceSceneEndSec,
+      minimumReadableDurationMs: 0,
+      sourceSceneEndSec,
+      canExtendWithinTimeline: false,
+      reason: 'No visual evidence attached to scene',
+    };
+  }
+
+  const plan = scene.editing_rhythm_plan;
+
+  // 2. Explicit requiresVisualHold check
+  if (plan && plan.requiresVisualHold === false) {
+    return {
+      holdRequired: false,
+      holdStartSec,
+      holdUntilSec: sourceSceneEndSec,
+      minimumReadableDurationMs:
+        plan.minimumReadableDurationMs || Math.round(sourceDurationSec * 1000),
+      sourceSceneEndSec,
+      canExtendWithinTimeline: false,
+      reason: 'requiresVisualHold is false in editing rhythm plan',
+    };
+  }
+
+  // 3. Minimum readable benchmark calculation
+  const isProofOrDemo = scene.adRole === 'proof' || scene.adRole === 'demo';
+  const minimumReadableDurationMs =
+    plan?.minimumReadableDurationMs || (isProofOrDemo ? 2200 : 1800);
+  const minimumHoldSec = minimumReadableDurationMs / 1000;
+
+  const holdRequired =
+    plan?.requiresVisualHold !== undefined
+      ? Boolean(plan.requiresVisualHold)
+      : sourceDurationSec < minimumHoldSec;
+
+  if (!holdRequired) {
+    return {
+      holdRequired: false,
+      holdStartSec,
+      holdUntilSec: sourceSceneEndSec,
+      minimumReadableDurationMs,
+      sourceSceneEndSec,
+      canExtendWithinTimeline: false,
+      reason: 'Visual hold not required (duration meets readability benchmark)',
+    };
+  }
+
+  // 4. If scene duration already >= minimumHoldSec, no extension needed
+  if (sourceDurationSec >= minimumHoldSec) {
+    return {
+      holdRequired: true,
+      holdStartSec,
+      holdUntilSec: sourceSceneEndSec,
+      minimumReadableDurationMs,
+      sourceSceneEndSec,
+      canExtendWithinTimeline: false,
+      reason: 'Scene duration already covers minimum readable hold',
+    };
+  }
+
+  // 5. Calculate hold extension with safety cap (MAX_EXTRA_HOLD_SEC)
+  const desiredHoldUntilSec = holdStartSec + minimumHoldSec;
+  const maxAllowedHoldUntilSec = sourceSceneEndSec + MAX_EXTRA_HOLD_SEC;
+  let cappedHoldUntilSec = Math.min(desiredHoldUntilSec, maxAllowedHoldUntilSec);
+
+  if (totalDuration !== undefined) {
+    cappedHoldUntilSec = Math.min(cappedHoldUntilSec, totalDuration);
+  }
+
+  // 6. Check timeline boundaries & conflicting target scenes
+  let interruptedByConflict = false;
+  const resolvedIdx =
+    sceneIndex !== undefined
+      ? sceneIndex
+      : allScenes?.findIndex((s) => s.id === scene.id);
+
+  if (allScenes && resolvedIdx !== undefined && resolvedIdx >= 0) {
+    for (let i = resolvedIdx + 1; i < allScenes.length; i++) {
+      const targetScene = allScenes[i];
+      if (targetScene.start >= cappedHoldUntilSec) {
+        break;
+      }
+      if (!canCarryEvidenceHoldIntoScene(scene, targetScene)) {
+        cappedHoldUntilSec = Math.min(cappedHoldUntilSec, targetScene.start);
+        interruptedByConflict = true;
+        break;
+      }
+      if (cappedHoldUntilSec <= targetScene.end) {
+        break;
+      }
+    }
+  }
+
+  const canExtend = cappedHoldUntilSec > sourceSceneEndSec;
+  const finalHoldUntil = canExtend ? cappedHoldUntilSec : sourceSceneEndSec;
+
+  let reason = `Evidence hold active: target ${minimumReadableDurationMs}ms (${finalHoldUntil.toFixed(2)}s)`;
+  if (desiredHoldUntilSec > maxAllowedHoldUntilSec) {
+    reason += ` (capped by MAX_EXTRA_HOLD_SEC ${MAX_EXTRA_HOLD_SEC}s)`;
+  } else if (interruptedByConflict) {
+    reason += ` (interrupted by conflicting target scene)`;
+  }
+
+  return {
+    holdRequired: true,
+    holdStartSec,
+    holdUntilSec: finalHoldUntil,
+    minimumReadableDurationMs,
+    sourceSceneEndSec,
+    canExtendWithinTimeline: canExtend,
+    reason,
+  };
+}
+
+/**
+ * Shared Multi-Renderer Evidence Resolver (PreviewPlayer & Canvas):
+ * Identifies which scene's visual evidence should be displayed at currentTime.
+ *
+ * Checks:
+ * 1. Current scene's own visual evidence (primary priority).
+ * 2. Preceding scene's visual evidence if currently within an active, compatible hold window.
+ */
+export function resolveEvidenceSceneForTime(
+  scenes: SceneEditPlan[],
+  activeSceneIndex: number,
+  currentTime: number
+): EvidenceResolution {
+  if (!scenes || scenes.length === 0) {
+    return { scene: null, isCarriedOver: false, holdWindow: null };
+  }
+
+  const resolvedIdx =
+    activeSceneIndex >= 0 && activeSceneIndex < scenes.length
+      ? activeSceneIndex
+      : scenes.findIndex((s) => currentTime >= s.start && currentTime < s.end);
+
+  const currentScene = scenes[resolvedIdx] || scenes[0];
+  if (!currentScene) {
+    return { scene: null, isCarriedOver: false, holdWindow: null };
+  }
+
+  // 1. Current scene visual evidence takes top priority
+  if (
+    currentScene.visual_evidence &&
+    (currentScene.visual_evidence.userAssetUrl || currentScene.visual_evidence.title)
+  ) {
+    const currentWindow = getEvidenceHoldWindow(currentScene, scenes, resolvedIdx);
+    return {
+      scene: currentScene,
+      isCarriedOver: false,
+      holdWindow: currentWindow,
+    };
+  }
+
+  // 2. Look backward to immediately previous scene(s) for active evidence hold
+  if (resolvedIdx > 0) {
+    for (let prevIdx = resolvedIdx - 1; prevIdx >= Math.max(0, resolvedIdx - 2); prevIdx--) {
+      const candidateScene = scenes[prevIdx];
+      if (
+        candidateScene?.visual_evidence &&
+        (candidateScene.visual_evidence.userAssetUrl || candidateScene.visual_evidence.title)
+      ) {
+        const holdWindow = getEvidenceHoldWindow(candidateScene, scenes, prevIdx);
+        if (
+          holdWindow.holdRequired &&
+          holdWindow.canExtendWithinTimeline &&
+          currentTime >= holdWindow.sourceSceneEndSec &&
+          currentTime < holdWindow.holdUntilSec &&
+          canCarryEvidenceHoldIntoScene(candidateScene, currentScene)
+        ) {
+          return {
+            scene: candidateScene,
+            isCarriedOver: true,
+            holdWindow,
+          };
+        }
+        // If the immediate predecessor has evidence but cannot carry over, do not search further back
+        break;
+      }
+    }
+  }
+
+  return { scene: null, isCarriedOver: false, holdWindow: null };
 }
