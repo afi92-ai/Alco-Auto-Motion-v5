@@ -1,5 +1,12 @@
-import { classifyFfmpegBinaryValidation } from '../../server/mp4Renderer';
-import { runRenderCertification, canProceedToRendererExport, canProceedToRenderExport } from '../renderCertification';
+import {
+  classifyFfmpegBinaryValidation,
+  getCandidateType,
+} from '../../server/mp4Renderer';
+import {
+  runRenderCertification,
+  canProceedToRendererExport,
+  canProceedToRenderExport,
+} from '../renderCertification';
 import { AlcoEditingProject, SceneEditPlan, Mp4RuntimeVerification } from '../../types';
 
 let passed = 0;
@@ -32,37 +39,38 @@ function createMockScene(overrides: Partial<SceneEditPlan>): SceneEditPlan {
 }
 
 export function runFfmpegPlaceholderClassificationTestSuite(): void {
-  console.log('=== RUNNING STEP 9.7.2 FFMPEG PLACEHOLDER CLASSIFICATION TEST SUITE ===\n');
+  console.log('=== RUNNING STEP 9.7.2.1 FFMPEG RESOLUTION & PLACEHOLDER TEST SUITE ===\n');
 
   // -------------------------------------------------------------------------
-  // TEST 1: File missing
+  // MANDATORY TEST 1: Explicit path missing
   // -------------------------------------------------------------------------
-  console.log('--- Test 1: File Missing Classification ---');
+  console.log('--- Test 1: Explicit Path Missing ---');
   {
     const res = classifyFfmpegBinaryValidation(
       '/path/to/nonexistent/ffmpeg',
       false, // fileExists
       0,     // fileSizeBytes
-      false  // versionCheckSucceeded
+      false, // versionCheckSucceeded
+      'EXPLICIT_PATH'
     );
 
-    assert(res.available === false, 'TEST 1.1: Missing binary available is false');
-    assert(res.isPlaceholder === false, 'TEST 1.2: Missing binary isPlaceholder is false');
-    assert(res.path === null, 'TEST 1.3: Missing binary path is null');
+    assert(res.available === false, 'TEST 1.1: Missing explicit binary available is false');
+    assert(res.isPlaceholder === false, 'TEST 1.2: Missing explicit binary isPlaceholder is false');
+    assert(res.path === null, 'TEST 1.3: Missing explicit binary path is null');
     assert(res.reason === 'binary missing', 'TEST 1.4: Reason indicates binary missing');
   }
 
   // -------------------------------------------------------------------------
-  // TEST 2: Tiny executable / stub file (<100KB)
+  // MANDATORY TEST 2: Explicit tiny stub (<100KB)
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 2: Tiny Executable / Stub File (<100KB) ---');
+  console.log('\n--- Test 2: Explicit Tiny Stub (<100KB) ---');
   {
-    // E.g. resources/ffmpeg/ffmpeg.exe (34 bytes stub)
     const res = classifyFfmpegBinaryValidation(
       '/project/resources/ffmpeg/ffmpeg.exe',
       true,  // fileExists
-      34,    // fileSizeBytes (34 bytes)
-      false  // versionCheckSucceeded
+      34,    // fileSizeBytes
+      false, // versionCheckSucceeded
+      'EXPLICIT_PATH'
     );
 
     assert(res.available === false, 'TEST 2.1: Stub binary available is false');
@@ -71,206 +79,190 @@ export function runFfmpegPlaceholderClassificationTestSuite(): void {
   }
 
   // -------------------------------------------------------------------------
-  // TEST 3: Binary exists but -version fails (corrupt / incompatible architecture)
+  // MANDATORY TEST 3: Explicit corrupt executable (-version fails)
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 3: Binary Exists But Execution Fails ---');
+  console.log('\n--- Test 3: Explicit Corrupt Executable (-version fails) ---');
   {
     const res = classifyFfmpegBinaryValidation(
       '/usr/local/bin/ffmpeg',
       true,       // fileExists
-      50 * 1024 * 1024, // fileSizeBytes (50 MB)
-      false       // versionCheckSucceeded
+      50 * 1024 * 1024, // fileSizeBytes
+      false,      // versionCheckSucceeded
+      'EXPLICIT_PATH'
     );
 
     assert(res.available === false, 'TEST 3.1: Execution failure available is false');
     assert(res.isPlaceholder === true, 'TEST 3.2: Execution failure isPlaceholder is true');
-    assert(res.reason?.includes('failed runtime validation') === true, 'TEST 3.3: Reason mentions runtime validation failure');
+    assert(res.reason?.includes('failed runtime validation') === true, 'TEST 3.3: Reason indicates failed runtime validation');
   }
 
   // -------------------------------------------------------------------------
-  // TEST 4: Real valid executable
+  // MANDATORY TEST 4: Explicit valid executable (-version succeeds)
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 4: Real Valid Executable ---');
+  console.log('\n--- Test 4: Explicit Valid Executable (-version succeeds) ---');
   {
     const res = classifyFfmpegBinaryValidation(
       '/usr/bin/ffmpeg',
       true,       // fileExists
-      75 * 1024 * 1024, // fileSizeBytes (75 MB)
-      true        // versionCheckSucceeded
+      75 * 1024 * 1024, // fileSizeBytes
+      true,       // versionCheckSucceeded
+      'EXPLICIT_PATH'
     );
 
-    assert(res.available === true, 'TEST 4.1: Valid binary available is true');
-    assert(res.isPlaceholder === false, 'TEST 4.2: Valid binary isPlaceholder is false');
+    assert(res.available === true, 'TEST 4.1: Valid explicit binary available is true');
+    assert(res.isPlaceholder === false, 'TEST 4.2: Valid explicit binary isPlaceholder is false');
     assert(res.path === '/usr/bin/ffmpeg', 'TEST 4.3: Valid binary path returned');
     assert(res.reason === 'valid binary', 'TEST 4.4: Reason indicates valid binary');
   }
 
   // -------------------------------------------------------------------------
-  // TEST 5: Health endpoint response contract simulation
+  // MANDATORY TEST 5: System PATH command "ffmpeg" (-version succeeds)
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 5: Health Endpoint Response Contract Mapping ---');
+  console.log('\n--- Test 5: System PATH Command "ffmpeg" (-version succeeds) ---');
   {
-    // Case 5A: Placeholder detected
-    const mockBinsPlaceholder = {
-      ffmpegPath: null,
-      ffprobePath: null,
-      ffmpegAvailable: false,
-      ffprobeAvailable: false,
-      ffmpegPlaceholder: true,
-      ffprobePlaceholder: true,
-      isPlaceholder: true,
-      validationReason: 'Bundled FFmpeg executables exist but failed runtime validation.',
-    };
+    assert(getCandidateType('ffmpeg') === 'SYSTEM_PATH_COMMAND', 'TEST 5.1: "ffmpeg" identified as SYSTEM_PATH_COMMAND');
+    const res = classifyFfmpegBinaryValidation(
+      'ffmpeg',
+      false, // fileExists
+      0,     // fileSizeBytes
+      true,  // versionCheckSucceeded
+      'SYSTEM_PATH_COMMAND'
+    );
 
-    const healthResponsePlaceholder = {
-      success: true,
-      mode: 'server',
-      renderMp4Available: mockBinsPlaceholder.ffmpegAvailable && mockBinsPlaceholder.ffprobeAvailable,
-      ffmpegAvailable: mockBinsPlaceholder.ffmpegAvailable,
-      ffprobeAvailable: mockBinsPlaceholder.ffprobeAvailable,
-      isPlaceholder: mockBinsPlaceholder.isPlaceholder === true,
-      ffmpegPlaceholder: mockBinsPlaceholder.ffmpegPlaceholder === true,
-      ffprobePlaceholder: mockBinsPlaceholder.ffprobePlaceholder === true,
-      validationReason: mockBinsPlaceholder.validationReason,
-    };
-
-    assert(healthResponsePlaceholder.renderMp4Available === false, 'TEST 5.1: Placeholder renderMp4Available is false');
-    assert(healthResponsePlaceholder.isPlaceholder === true, 'TEST 5.2: Placeholder isPlaceholder is true');
-    assert(healthResponsePlaceholder.ffmpegPlaceholder === true, 'TEST 5.3: ffmpegPlaceholder is true');
-
-    // Case 5B: Valid binaries
-    const mockBinsValid = {
-      ffmpegPath: '/usr/bin/ffmpeg',
-      ffprobePath: '/usr/bin/ffprobe',
-      ffmpegAvailable: true,
-      ffprobeAvailable: true,
-      ffmpegPlaceholder: false,
-      ffprobePlaceholder: false,
-      isPlaceholder: false,
-      validationReason: 'Valid FFmpeg and FFprobe binaries verified.',
-    };
-
-    const healthResponseValid = {
-      success: true,
-      mode: 'server',
-      renderMp4Available: mockBinsValid.ffmpegAvailable && mockBinsValid.ffprobeAvailable,
-      ffmpegAvailable: mockBinsValid.ffmpegAvailable,
-      ffprobeAvailable: mockBinsValid.ffprobeAvailable,
-      isPlaceholder: mockBinsValid.isPlaceholder === true,
-      ffmpegPlaceholder: mockBinsValid.ffmpegPlaceholder === true,
-      ffprobePlaceholder: mockBinsValid.ffprobePlaceholder === true,
-      validationReason: mockBinsValid.validationReason,
-    };
-
-    assert(healthResponseValid.renderMp4Available === true, 'TEST 5.4: Valid renderMp4Available is true');
-    assert(healthResponseValid.isPlaceholder === false, 'TEST 5.5: Valid isPlaceholder is false');
-
-    // Case 5C: Missing binaries
-    const mockBinsMissing = {
-      ffmpegPath: null,
-      ffprobePath: null,
-      ffmpegAvailable: false,
-      ffprobeAvailable: false,
-      ffmpegPlaceholder: false,
-      ffprobePlaceholder: false,
-      isPlaceholder: false,
-      validationReason: 'FFmpeg binary missing in runtime environment.',
-    };
-
-    const healthResponseMissing = {
-      success: true,
-      mode: 'server',
-      renderMp4Available: mockBinsMissing.ffmpegAvailable && mockBinsMissing.ffprobeAvailable,
-      ffmpegAvailable: mockBinsMissing.ffmpegAvailable,
-      ffprobeAvailable: mockBinsMissing.ffprobeAvailable,
-      isPlaceholder: mockBinsMissing.isPlaceholder === true,
-      ffmpegPlaceholder: mockBinsMissing.ffmpegPlaceholder === true,
-      ffprobePlaceholder: mockBinsMissing.ffprobePlaceholder === true,
-      validationReason: mockBinsMissing.validationReason,
-    };
-
-    assert(healthResponseMissing.renderMp4Available === false, 'TEST 5.6: Missing renderMp4Available is false');
-    assert(healthResponseMissing.isPlaceholder === false, 'TEST 5.7: Missing isPlaceholder is false');
+    assert(res.available === true, 'TEST 5.2: System PATH command available is true when version check succeeds');
+    assert(res.isPlaceholder === false, 'TEST 5.3: System PATH command isPlaceholder is false');
+    assert(res.path === 'ffmpeg', 'TEST 5.4: Command name returned as path');
+    assert(res.reason === 'valid system path command', 'TEST 5.5: Reason indicates valid system path command');
   }
 
   // -------------------------------------------------------------------------
-  // TEST 6: ExportModal Evaluation Order Contract (Placeholder never becomes VERIFIED)
+  // MANDATORY TEST 6: System PATH command "ffmpeg" (-version fails)
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 6: ExportModal Evaluation Order Safety ---');
+  console.log('\n--- Test 6: System PATH Command "ffmpeg" (-version fails) ---');
   {
-    // Simulating health check results where HTTP status is 200 and JSON is valid
-    const simulateExportModalEvaluation = (healthData: any, pingSuccess: boolean) => {
-      const isPlaceholder =
-        healthData?.isPlaceholder === true ||
-        healthData?.ffmpegPlaceholder === true ||
-        healthData?.ffprobePlaceholder === true;
+    const res = classifyFfmpegBinaryValidation(
+      'ffmpeg',
+      false, // fileExists
+      0,     // fileSizeBytes
+      false, // versionCheckSucceeded
+      'SYSTEM_PATH_COMMAND'
+    );
 
-      const healthSuccess =
-        healthData?.success === true &&
-        healthData?.renderMp4Available === true &&
-        healthData?.ffmpegAvailable === true &&
-        healthData?.ffprobeAvailable === true &&
-        !healthData?.isPlaceholder &&
-        !healthData?.ffmpegPlaceholder &&
-        !healthData?.ffprobePlaceholder;
+    assert(res.available === false, 'TEST 6.1: Unavailable system PATH command available is false');
+    assert(res.isPlaceholder === false, 'TEST 6.2: Unavailable system PATH command isPlaceholder is false');
+    assert(res.reason === 'command unavailable from system PATH', 'TEST 6.3: Reason indicates command unavailable from system PATH');
+  }
 
-      let verificationStatus: Mp4RuntimeVerification = 'NOT_VERIFIED';
-      let backendMode = 'missing';
+  // -------------------------------------------------------------------------
+  // MANDATORY TEST 7: Bundled placeholder exists but later System PATH ffmpeg succeeds
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 7: Bundled Placeholder Fallback to System PATH FFmpeg ---');
+  {
+    const candidates = [
+      'resources/ffmpeg/ffmpeg.exe',
+      'ffmpeg',
+    ];
 
-      if (isPlaceholder) {
-        verificationStatus = 'PLACEHOLDER';
-        backendMode = 'ffmpeg_missing';
-      } else if (healthSuccess && pingSuccess) {
-        verificationStatus = 'VERIFIED';
-        backendMode = 'available';
-      } else if (healthData && healthData.success === true && (healthData.ffmpegAvailable === false || healthData.ffprobeAvailable === false)) {
-        verificationStatus = 'UNAVAILABLE';
-        backendMode = 'ffmpeg_missing';
-      } else {
-        verificationStatus = 'NOT_VERIFIED';
-        backendMode = 'missing';
+    let resolvedFfmpeg: string | null = null;
+    let ffmpegPlaceholderDetected = false;
+
+    for (const p of candidates) {
+      const candType = getCandidateType(p);
+      const isExplicit = candType === 'EXPLICIT_PATH';
+      const fileExists = isExplicit;
+      const fileSizeBytes = isExplicit ? 34 : 0;
+      const versionOk = candType === 'SYSTEM_PATH_COMMAND';
+
+      const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk, candType);
+
+      if (classification.available) {
+        resolvedFfmpeg = p;
+        break;
+      } else if (classification.isPlaceholder) {
+        ffmpegPlaceholderDetected = true;
       }
+    }
 
-      return { verificationStatus, backendMode };
-    };
+    const ffmpegAvailable = !!resolvedFfmpeg;
+    const ffmpegPlaceholder = ffmpegPlaceholderDetected && !ffmpegAvailable;
 
-    // Placeholder payload
-    const evalPlaceholder = simulateExportModalEvaluation(
-      {
-        success: true,
-        renderMp4Available: false,
-        ffmpegAvailable: false,
-        ffprobeAvailable: false,
-        isPlaceholder: true,
-        ffmpegPlaceholder: true,
-        ffprobePlaceholder: true,
-      },
-      true // ping endpoint also responded 200
-    );
-
-    assert(evalPlaceholder.verificationStatus === 'PLACEHOLDER', 'TEST 6.1: Placeholder evaluated to PLACEHOLDER');
-    assert(evalPlaceholder.backendMode === 'ffmpeg_missing', 'TEST 6.2: Placeholder backendMode is ffmpeg_missing (NOT available)');
-
-    // Valid payload
-    const evalValid = simulateExportModalEvaluation(
-      {
-        success: true,
-        renderMp4Available: true,
-        ffmpegAvailable: true,
-        ffprobeAvailable: true,
-        isPlaceholder: false,
-      },
-      true
-    );
-
-    assert(evalValid.verificationStatus === 'VERIFIED', 'TEST 6.3: Valid runtime evaluated to VERIFIED');
-    assert(evalValid.backendMode === 'available', 'TEST 6.4: Valid runtime backendMode is available');
+    assert(ffmpegAvailable === true, 'TEST 7.1: FFmpeg resolved from system PATH');
+    assert(resolvedFfmpeg === 'ffmpeg', 'TEST 7.2: Resolved path is "ffmpeg"');
+    assert(ffmpegPlaceholder === false, 'TEST 7.3: ffmpegPlaceholder is false because valid binary was found');
   }
 
   // -------------------------------------------------------------------------
-  // TEST 7: Render Certification Hardening with PLACEHOLDER
+  // MANDATORY TEST 8: Bundled ffprobe placeholder but PATH ffprobe succeeds
   // -------------------------------------------------------------------------
-  console.log('\n--- Test 7: Render Certification Hardening on PLACEHOLDER ---');
+  console.log('\n--- Test 8: Bundled FFprobe Placeholder Fallback to System PATH FFprobe ---');
+  {
+    const candidates = [
+      'resources/ffmpeg/ffprobe.exe',
+      'ffprobe',
+    ];
+
+    let resolvedFfprobe: string | null = null;
+    let ffprobePlaceholderDetected = false;
+
+    for (const p of candidates) {
+      const candType = getCandidateType(p);
+      const isExplicit = candType === 'EXPLICIT_PATH';
+      const fileExists = isExplicit;
+      const fileSizeBytes = isExplicit ? 34 : 0;
+      const versionOk = candType === 'SYSTEM_PATH_COMMAND';
+
+      const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk, candType);
+
+      if (classification.available) {
+        resolvedFfprobe = p;
+        break;
+      } else if (classification.isPlaceholder) {
+        ffprobePlaceholderDetected = true;
+      }
+    }
+
+    const ffprobeAvailable = !!resolvedFfprobe;
+    const ffprobePlaceholder = ffprobePlaceholderDetected && !ffprobeAvailable;
+
+    assert(ffprobeAvailable === true, 'TEST 8.1: FFprobe resolved from system PATH');
+    assert(resolvedFfprobe === 'ffprobe', 'TEST 8.2: Resolved path is "ffprobe"');
+    assert(ffprobePlaceholder === false, 'TEST 8.3: ffprobePlaceholder is false because valid binary was found');
+  }
+
+  // -------------------------------------------------------------------------
+  // MANDATORY TEST 9: FFmpeg valid from PATH, FFprobe valid from explicit path
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 9: Mixed Source Binary Resolution ---');
+  {
+    const ffmpegRes = classifyFfmpegBinaryValidation('ffmpeg', false, 0, true, 'SYSTEM_PATH_COMMAND');
+    const ffprobeRes = classifyFfmpegBinaryValidation('/usr/bin/ffprobe', true, 50 * 1024 * 1024, true, 'EXPLICIT_PATH');
+
+    const renderMp4Available = ffmpegRes.available && ffprobeRes.available;
+    const isPlaceholder = ffmpegRes.isPlaceholder || ffprobeRes.isPlaceholder;
+
+    assert(renderMp4Available === true, 'TEST 9.1: renderMp4Available is true for mixed sources');
+    assert(isPlaceholder === false, 'TEST 9.2: isPlaceholder is false when both sources are valid');
+  }
+
+  // -------------------------------------------------------------------------
+  // MANDATORY TEST 10: Both PATH commands valid
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 10: Both PATH Commands Valid ---');
+  {
+    const ffmpegRes = classifyFfmpegBinaryValidation('ffmpeg', false, 0, true, 'SYSTEM_PATH_COMMAND');
+    const ffprobeRes = classifyFfmpegBinaryValidation('ffprobe', false, 0, true, 'SYSTEM_PATH_COMMAND');
+
+    const renderMp4Available = ffmpegRes.available && ffprobeRes.available;
+    const isPlaceholder = ffmpegRes.isPlaceholder || ffprobeRes.isPlaceholder;
+
+    assert(renderMp4Available === true, 'TEST 10.1: renderMp4Available is true for PATH commands');
+    assert(isPlaceholder === false, 'TEST 10.2: isPlaceholder is false for PATH commands');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 11: Render Certification Hardening on PLACEHOLDER
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 11: Render Certification Hardening on PLACEHOLDER ---');
   {
     const scene = createMockScene({ id: 1, start: 0, end: 3.0 });
     const project: Partial<AlcoEditingProject> = {
@@ -282,18 +274,18 @@ export function runFfmpegPlaceholderClassificationTestSuite(): void {
       mp4RuntimeVerification: 'PLACEHOLDER',
     });
 
-    assert(report.mp4Verified === false, 'TEST 7.1: mp4Verified is false');
-    assert(report.mp4Pass === false, 'TEST 7.2: mp4Pass is false');
-    assert(report.fullParityVerified === false, 'TEST 7.3: fullParityVerified is false');
-    assert(canProceedToRendererExport(report, 'MP4') === false, 'TEST 7.4: MP4 export blocked');
-    assert(canProceedToRendererExport(report, 'WEBM') === true, 'TEST 7.5: WebM export allowed');
-    assert(canProceedToRenderExport(report) === true, 'TEST 7.6: Overall render allowed (via WebM/Canvas fallback)');
+    assert(report.mp4Verified === false, 'TEST 11.1: mp4Verified is false');
+    assert(report.mp4Pass === false, 'TEST 11.2: mp4Pass is false');
+    assert(report.fullParityVerified === false, 'TEST 11.3: fullParityVerified is false');
+    assert(canProceedToRendererExport(report, 'MP4') === false, 'TEST 11.4: MP4 export blocked');
+    assert(canProceedToRendererExport(report, 'WEBM') === true, 'TEST 11.5: WebM export allowed');
+    assert(canProceedToRenderExport(report) === true, 'TEST 11.6: Overall render allowed (via WebM/Canvas fallback)');
 
     const issue = report.issues.find((i) => i.code === 'MP4_FFMPEG_PLACEHOLDER');
-    assert(issue !== undefined, 'TEST 7.7: MP4_FFMPEG_PLACEHOLDER issue recorded');
+    assert(issue !== undefined, 'TEST 11.7: MP4_FFMPEG_PLACEHOLDER issue recorded');
   }
 
-  console.log(`\n=== STEP 9.7.2 TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);
+  console.log(`\n=== STEP 9.7.2.1 TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);
   if (failed > 0) {
     process.exit(1);
   }

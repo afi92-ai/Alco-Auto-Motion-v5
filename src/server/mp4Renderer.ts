@@ -197,6 +197,8 @@ export interface FfmpegBinaries {
   validationReason?: string;
 }
 
+export type BinaryCandidateType = 'EXPLICIT_PATH' | 'SYSTEM_PATH_COMMAND';
+
 export interface SingleBinaryResolution {
   path: string | null;
   available: boolean;
@@ -204,19 +206,32 @@ export interface SingleBinaryResolution {
   reason?: string;
 }
 
+export function getCandidateType(candidatePath: string | null | undefined): BinaryCandidateType {
+  if (!candidatePath) return 'EXPLICIT_PATH';
+  const isExplicit = path.isAbsolute(candidatePath) || candidatePath.includes('/') || candidatePath.includes('\\');
+  return isExplicit ? 'EXPLICIT_PATH' : 'SYSTEM_PATH_COMMAND';
+}
+
 /**
  * Pure helper to classify binary validation states deterministically:
+ *
+ * For SYSTEM_PATH_COMMAND (e.g., 'ffmpeg', 'ffprobe'):
+ * - versionCheckSucceeded = true => available = true, isPlaceholder = false
+ * - versionCheckSucceeded = false => available = false, isPlaceholder = false (reason: command unavailable)
+ *
+ * For EXPLICIT_PATH (e.g., '/usr/bin/ffmpeg', 'resources/ffmpeg/ffmpeg.exe'):
  * - FILE MISSING: available = false, isPlaceholder = false
- * - FILE EXISTS BUT INVALID/STUB: available = false, isPlaceholder = true
+ * - FILE EXISTS BUT INVALID/STUB (<100KB or -version fails): available = false, isPlaceholder = true
  * - REAL VALID BINARY: available = true, isPlaceholder = false
  */
 export function classifyFfmpegBinaryValidation(
   candidatePath: string | null | undefined,
   fileExists: boolean,
   fileSizeBytes: number,
-  versionCheckSucceeded: boolean
+  versionCheckSucceeded: boolean,
+  candidateType?: BinaryCandidateType
 ): SingleBinaryResolution {
-  if (!candidatePath || !fileExists) {
+  if (!candidatePath) {
     return {
       path: null,
       available: false,
@@ -225,16 +240,51 @@ export function classifyFfmpegBinaryValidation(
     };
   }
 
-  // Primary truth: successful execution of -version
-  // Secondary check: size < 100 KB (100 * 1024 bytes) is suspicious/placeholder
-  if (!versionCheckSucceeded || fileSizeBytes < 100 * 1024) {
+  const type = candidateType || getCandidateType(candidatePath);
+
+  if (type === 'SYSTEM_PATH_COMMAND') {
+    if (versionCheckSucceeded) {
+      return {
+        path: candidatePath,
+        available: true,
+        isPlaceholder: false,
+        reason: 'valid system path command',
+      };
+    } else {
+      return {
+        path: null,
+        available: false,
+        isPlaceholder: false,
+        reason: 'command unavailable from system PATH',
+      };
+    }
+  }
+
+  // EXPLICIT_PATH
+  if (!fileExists) {
+    return {
+      path: null,
+      available: false,
+      isPlaceholder: false,
+      reason: 'binary missing',
+    };
+  }
+
+  if (fileSizeBytes < 100 * 1024) {
     return {
       path: candidatePath,
       available: false,
       isPlaceholder: true,
-      reason: !versionCheckSucceeded
-        ? 'binary exists but failed runtime validation (-version)'
-        : 'binary exists but file size is implausibly small (< 100KB)',
+      reason: 'binary exists but file size is implausibly small (< 100KB)',
+    };
+  }
+
+  if (!versionCheckSucceeded) {
+    return {
+      path: candidatePath,
+      available: false,
+      isPlaceholder: true,
+      reason: 'binary exists but failed runtime validation (-version)',
     };
   }
 
@@ -250,8 +300,11 @@ let cachedBinaries: FfmpegBinaries | null = null;
 
 async function checkExecutable(binPath: string, args: string[] = ['-version']): Promise<boolean> {
   try {
-    const isFilePath = path.isAbsolute(binPath) || binPath.includes('/') || binPath.includes('\\');
-    if (isFilePath && fs.existsSync(binPath)) {
+    const candidateType = getCandidateType(binPath);
+    if (candidateType === 'EXPLICIT_PATH') {
+      if (!fs.existsSync(binPath)) {
+        return false;
+      }
       const stats = fs.statSync(binPath);
       if (stats.size < 100 * 1024) {
         return false;
@@ -302,21 +355,26 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
   let ffmpegPlaceholderDetected = false;
 
   for (const p of candidateFfmpeg) {
-    const isFilePath = path.isAbsolute(p) || p.includes('/') || p.includes('\\');
-    const fileExists = isFilePath ? fs.existsSync(p) : false;
-    const fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+    const candType = getCandidateType(p);
+    let fileExists = false;
+    let fileSizeBytes = 0;
+
+    if (candType === 'EXPLICIT_PATH') {
+      fileExists = fs.existsSync(p);
+      fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+    }
 
     let versionOk = false;
-    if (fileExists && fileSizeBytes < 100 * 1024) {
+    if (candType === 'EXPLICIT_PATH' && fileExists && fileSizeBytes < 100 * 1024) {
       versionOk = false;
     } else {
       versionOk = await checkExecutable(p, ['-version']);
     }
 
-    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk);
-    if (versionOk && classification.available) {
+    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk, candType);
+
+    if (classification.available) {
       resolvedFfmpeg = p;
-      ffmpegPlaceholderDetected = false;
       break;
     } else if (classification.isPlaceholder) {
       ffmpegPlaceholderDetected = true;
@@ -327,21 +385,26 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
   let ffprobePlaceholderDetected = false;
 
   for (const p of candidateFfprobe) {
-    const isFilePath = path.isAbsolute(p) || p.includes('/') || p.includes('\\');
-    const fileExists = isFilePath ? fs.existsSync(p) : false;
-    const fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+    const candType = getCandidateType(p);
+    let fileExists = false;
+    let fileSizeBytes = 0;
+
+    if (candType === 'EXPLICIT_PATH') {
+      fileExists = fs.existsSync(p);
+      fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+    }
 
     let versionOk = false;
-    if (fileExists && fileSizeBytes < 100 * 1024) {
+    if (candType === 'EXPLICIT_PATH' && fileExists && fileSizeBytes < 100 * 1024) {
       versionOk = false;
     } else {
       versionOk = await checkExecutable(p, ['-version']);
     }
 
-    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk);
-    if (versionOk && classification.available) {
+    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk, candType);
+
+    if (classification.available) {
       resolvedFfprobe = p;
-      ffprobePlaceholderDetected = false;
       break;
     } else if (classification.isPlaceholder) {
       ffprobePlaceholderDetected = true;
@@ -350,7 +413,9 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
 
   const ffmpegAvailable = !!resolvedFfmpeg;
   const ffprobeAvailable = !!resolvedFfprobe;
-  const isPlaceholder = (ffmpegPlaceholderDetected || ffprobePlaceholderDetected) && (!ffmpegAvailable || !ffprobeAvailable);
+  const ffmpegPlaceholder = ffmpegPlaceholderDetected && !ffmpegAvailable;
+  const ffprobePlaceholder = ffprobePlaceholderDetected && !ffprobeAvailable;
+  const isPlaceholder = ffmpegPlaceholder || ffprobePlaceholder;
 
   let validationReason = 'FFmpeg binary missing in runtime environment.';
   if (ffmpegAvailable && ffprobeAvailable) {
@@ -366,8 +431,8 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
     ffprobePath: resolvedFfprobe,
     ffmpegAvailable,
     ffprobeAvailable,
-    ffmpegPlaceholder: ffmpegPlaceholderDetected && !ffmpegAvailable,
-    ffprobePlaceholder: ffprobePlaceholderDetected && !ffprobeAvailable,
+    ffmpegPlaceholder,
+    ffprobePlaceholder,
     isPlaceholder,
     validationReason,
   };
