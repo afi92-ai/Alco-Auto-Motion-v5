@@ -172,6 +172,27 @@ export function calculateSceneVisualComplexity(scene: SceneEditPlan): SceneVisua
  * - 60–74:  NEEDS_REVIEW
  * - <60:    NOT_READY
  */
+/**
+ * Deterministic quality scoring based on final validated state.
+ *
+ * Penalty Rules:
+ * - Unresolved:
+ *   - BLOCKING: -25 (blocks preview/export)
+ *   - ERROR:    -12
+ *   - WARNING:  -4
+ *   - INFO:      0
+ * - Successfully Resolved Auto-Fix:
+ *   - BLOCKING: -5 (retains residual note, no longer blocks)
+ *   - ERROR:    -2 (retains small residual penalty for intervention)
+ *   - WARNING:   0 (auto-fixed warning incurs no penalty on final score)
+ *   - INFO:      0
+ *
+ * Scoring classification:
+ * - 90–100: READY
+ * - 75–89:  READY_WITH_WARNINGS
+ * - 60–74:  NEEDS_REVIEW
+ * - <60:    NOT_READY
+ */
 export function calculateQualityScore(issues: CreativeQualityIssue[]): {
   score: number;
   status: CreativeQualityStatus;
@@ -179,31 +200,60 @@ export function calculateQualityScore(issues: CreativeQualityIssue[]): {
   blockingIssueCount: number;
   warningCount: number;
   autoFixCount: number;
+  resolvedIssueCount: number;
+  resolvedWarningCount: number;
 } {
   let score = 100;
   let blockingIssueCount = 0;
   let warningCount = 0;
   let autoFixCount = 0;
+  let resolvedIssueCount = 0;
+  let resolvedWarningCount = 0;
 
   for (const issue of issues) {
+    const isResolved = Boolean(issue.resolved || issue.autoFixApplied);
+
     if (issue.autoFixApplied) {
       autoFixCount++;
     }
 
-    switch (issue.severity) {
-      case 'BLOCKING':
-        score -= 25;
-        blockingIssueCount++;
-        break;
-      case 'ERROR':
-        score -= 12;
-        break;
-      case 'WARNING':
-        score -= 4;
-        warningCount++;
-        break;
-      case 'INFO':
-        break;
+    if (isResolved) {
+      resolvedIssueCount++;
+      if (issue.severity === 'WARNING') {
+        resolvedWarningCount++;
+      }
+
+      // Penalty for successfully resolved auto-fixes
+      switch (issue.severity) {
+        case 'BLOCKING':
+          score -= 5;
+          break;
+        case 'ERROR':
+          score -= 2;
+          break;
+        case 'WARNING':
+          score -= 0;
+          break;
+        case 'INFO':
+          break;
+      }
+    } else {
+      // Penalty for unresolved issues
+      switch (issue.severity) {
+        case 'BLOCKING':
+          score -= 25;
+          blockingIssueCount++;
+          break;
+        case 'ERROR':
+          score -= 12;
+          break;
+        case 'WARNING':
+          score -= 4;
+          warningCount++;
+          break;
+        case 'INFO':
+          break;
+      }
     }
   }
 
@@ -233,7 +283,21 @@ export function calculateQualityScore(issues: CreativeQualityIssue[]): {
     blockingIssueCount,
     warningCount,
     autoFixCount,
+    resolvedIssueCount,
+    resolvedWarningCount,
   };
+}
+
+/**
+ * Evaluates whether the workflow can safely proceed past Quality Gate to Preview/Export.
+ * Returns false if blocking issues exist or status is FAIL.
+ * Allows proceeding with WARNINGs or PASS_WITH_WARNINGS.
+ */
+export function canProceedAfterQualityGate(report?: CreativeQualityReport | null): boolean {
+  if (!report) return true;
+  if (report.status === 'FAIL') return false;
+  if ((report.blockingIssueCount ?? 0) > 0) return false;
+  return true;
 }
 
 // ============================================================================
@@ -284,6 +348,8 @@ function validateCaptionVsVisual(
           targetScene.caption_font_size_pt = 22;
         }
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Caption density reduced to clean_minimal, positioned LOWER, and treatment set to SUBDUED.';
       }
       issues.push(issue);
     }
@@ -311,6 +377,8 @@ function validateCaptionVsVisual(
           targetScene.composition_profile.captionTreatment = 'SUBDUED';
         }
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Caption repositioned to LOWER and subdued to prevent collision with evidence.';
       }
       issues.push(issue);
     }
@@ -329,6 +397,8 @@ function validateCaptionVsVisual(
     if (autoFix) {
       targetScene.highlight_words = scene.highlight_words.slice(0, 3);
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Trimmed highlighted words to 3 priority words.';
     }
     issues.push(issue);
   }
@@ -395,6 +465,8 @@ function validateCaptionVsVisual(
         }
         targetScene.caption_adaptive_position = 'LOWER';
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'CTA caption set to minimal treatment and positioned lower to protect conversion CTA.';
       }
       issues.push(issue);
     }
@@ -462,6 +534,8 @@ function validateEvidenceReadability(
         targetScene.editing_rhythm_plan.requiresVisualHold = true;
         targetScene.editing_rhythm_plan.refreshStrategy = 'EVIDENCE_HOLD';
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Enabled requiresVisualHold and set refresh strategy to EVIDENCE_HOLD.';
       }
       issues.push(issue);
     }
@@ -489,6 +563,8 @@ function validateEvidenceReadability(
           targetScene.composition_profile.brollLayer = 'SUPPRESSED';
         }
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Suppressed conflicting generic B-roll to guarantee evidence visibility.';
       }
       issues.push(issue);
     }
@@ -520,6 +596,8 @@ function validateEvidenceReadability(
           // Cap hold window strictly to nextScene.start
           targetScene.editing_rhythm_plan.targetVisualIntervalMs = Math.round((scene.end - scene.start) * 1000);
           issue.autoFixApplied = true;
+          issue.resolved = true;
+          issue.resolution = 'Clamped evidence hold interval strictly to scene boundary before conflict.';
         }
         issues.push(issue);
       }
@@ -562,6 +640,8 @@ function validateMotionVsRole(
         targetScene.camera_dynamics.intensity = 'subtle';
       }
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Motion downgraded to normal and motion_scale capped at 1.02x.';
     }
     issues.push(issue);
   }
@@ -583,6 +663,8 @@ function validateMotionVsRole(
         targetScene.camera_dynamics.intensity = 'subtle';
       }
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Motion downgraded to normal and motion_scale set to 1.0x.';
     }
     issues.push(issue);
   }
@@ -600,6 +682,8 @@ function validateMotionVsRole(
     if (autoFix && targetScene.editing_rhythm_plan) {
       targetScene.editing_rhythm_plan.motionBudget = 'LOW';
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Demo scene motion budget lowered from HIGH to LOW.';
     }
     issues.push(issue);
   }
@@ -625,6 +709,8 @@ function validateMotionVsRole(
         targetScene.editing_rhythm_plan.motionBudget = 'MEDIUM';
       }
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Motion scale capped at 1.05x and motion budget reduced to MEDIUM for dense speech.';
     }
     issues.push(issue);
   }
@@ -676,6 +762,8 @@ function validateMidSceneRefresh(
       targetScene.editing_rhythm_plan.allowMidSceneRefresh = false;
       targetScene.editing_rhythm_plan.midSceneRefreshPointsSec = [];
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Disabled mid-scene refresh and cleared refresh points for CTA.';
     }
     issues.push(issue);
   }
@@ -694,6 +782,8 @@ function validateMidSceneRefresh(
     if (autoFix && targetScene.editing_rhythm_plan) {
       targetScene.editing_rhythm_plan.midSceneRefreshPointsSec = points.filter((p) => p > 0 && p < durationSec);
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Filtered out invalid refresh points outside scene duration.';
     }
     issues.push(issue);
   }
@@ -715,6 +805,8 @@ function validateMidSceneRefresh(
       if (autoFix && targetScene.editing_rhythm_plan) {
         targetScene.editing_rhythm_plan.midSceneRefreshPointsSec = points.filter((p) => p >= lockDuration);
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Removed refresh points during protected hook focal lock window.';
       }
       issues.push(issue);
     }
@@ -734,6 +826,8 @@ function validateMidSceneRefresh(
       targetScene.editing_rhythm_plan.allowMidSceneRefresh = false;
       targetScene.editing_rhythm_plan.midSceneRefreshPointsSec = [];
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Disabled mid-scene refresh during protected evidence hold.';
     }
     issues.push(issue);
   }
@@ -767,6 +861,8 @@ function validateMidSceneRefresh(
         }
         targetScene.editing_rhythm_plan.midSceneRefreshPointsSec = deduplicated;
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Sorted and deduplicated refresh points with minimum 400ms interval.';
       }
       issues.push(issue);
     }
@@ -808,6 +904,8 @@ function validateTransitions(
         targetScene.editing_rhythm_plan.transitionDurationMs = 0;
       }
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Replaced flash transition with cut to preserve stability.';
     }
     issues.push(issue);
   }
@@ -831,6 +929,8 @@ function validateTransitions(
           targetScene.editing_rhythm_plan.preferredTransition = 'cut';
         }
         issue.autoFixApplied = true;
+        issue.resolved = true;
+        issue.resolution = 'Replaced consecutive flash transition with cut.';
       }
       issues.push(issue);
     }
@@ -851,6 +951,8 @@ function validateTransitions(
     if (autoFix && targetScene.editing_rhythm_plan) {
       targetScene.editing_rhythm_plan.transitionDurationMs = Math.min(250, Math.max(0, Math.round(sceneDurMs * 0.2)));
       issue.autoFixApplied = true;
+      issue.resolved = true;
+      issue.resolution = 'Adjusted transition duration to safe proportion of scene duration.';
     }
     issues.push(issue);
   }

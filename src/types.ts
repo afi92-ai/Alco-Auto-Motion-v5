@@ -631,6 +631,8 @@ export interface CreativeQualityIssue {
   sceneId?: number | string;
   autoFixAvailable: boolean;
   autoFixApplied?: boolean;
+  resolved?: boolean;
+  resolution?: string;
 }
 
 export type CreativeQualityStatus = 'PASS' | 'PASS_WITH_WARNINGS' | 'FAIL';
@@ -652,6 +654,8 @@ export interface CreativeQualityReport {
   blockingIssueCount: number;
   warningCount: number;
   autoFixCount: number;
+  resolvedIssueCount?: number;
+  resolvedWarningCount?: number;
   sceneComplexity?: SceneVisualComplexityAnalysis[];
 }
 

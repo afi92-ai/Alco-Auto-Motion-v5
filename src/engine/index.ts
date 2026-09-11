@@ -354,11 +354,7 @@ export function buildIntelligentEditPlan(
     },
   };
 
-  // 6. Run Creative Validation Layer (Prioritas 4)
-  const auditResult = validateCreativePerformance(partialProject);
-  partialProject.creative_audit = auditResult;
-
-  // 7. Step 9.6: Run Creative Quality Gate & Final Editing Validation
+  // 6. Step 9.6: Run Creative Quality Gate & Final Editing Validation (Auto-Fix & Safety Validation)
   const qualityGateResult = runCreativeQualityGate(scenes, {
     autoFix: true,
     userAssets,
@@ -367,6 +363,11 @@ export function buildIntelligentEditPlan(
   });
   partialProject.scenes = qualityGateResult.validatedScenes;
   partialProject.creative_quality_report = qualityGateResult.report;
+
+  // 7. Final Creative Validation Layer (Prioritas 4 & Step 9.6.1)
+  // Recompute creative audit on the final validated scenes
+  const finalAuditResult = validateCreativePerformance(partialProject);
+  partialProject.creative_audit = finalAuditResult;
 
   return partialProject;
 }

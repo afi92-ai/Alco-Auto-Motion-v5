@@ -7,6 +7,7 @@ import {
   runCreativeQualityGate,
   calculateSceneVisualComplexity,
   calculateQualityScore,
+  canProceedAfterQualityGate,
   CreativeQualityIssue,
 } from '../creativeQualityGate';
 import { SceneEditPlan } from '../../types';
@@ -529,6 +530,298 @@ function runTests() {
     assert(blockedRes.score === 55, `TEST 14.4: Blocked score is exactly 55 (got ${blockedRes.score})`);
     assert(blockedRes.status === 'FAIL', 'TEST 14.5: Status is FAIL');
     assert(blockedRes.classification === 'NOT_READY', 'TEST 14.6: Classification is NOT_READY');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 15 — Auto-fix sets resolved=true and populates resolution description
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 15: Auto-Fix Resolved Metadata Population ---');
+  {
+    const scenesToFix: SceneEditPlan[] = [
+      createMockScene({
+        id: 1501,
+        start: 0,
+        end: 3.0,
+        adRole: 'proof',
+        motion: 'punch_zoom',
+        motion_scale: 1.25,
+      }),
+      createMockScene({
+        id: 1502,
+        start: 3.0,
+        end: 6.0,
+        adRole: 'proof',
+        transition: 'flash',
+        editing_rhythm_plan: {
+          preferredTransition: 'flash',
+        } as any,
+      }),
+    ];
+
+    const { report } = runCreativeQualityGate(scenesToFix, { autoFix: true });
+    const fixedIssues = report.issues.filter((i) => i.autoFixApplied);
+
+    assert(fixedIssues.length >= 2, 'TEST 15.1: At least 2 auto-fixes applied');
+    for (const issue of fixedIssues) {
+      assert(issue.resolved === true, `TEST 15.2: Issue ${issue.code} has resolved === true`);
+      assert(typeof issue.resolution === 'string' && issue.resolution.length > 5, `TEST 15.3: Issue ${issue.code} has resolution string: "${issue.resolution}"`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 16 — Resolved WARNING penalty is 0 (score stays 100)
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 16: Resolved WARNING Penalty is 0 ---');
+  {
+    const resolvedWarningIssues: CreativeQualityIssue[] = [
+      {
+        code: 'CAPTION_TOO_DOMINANT_IN_PROOF',
+        severity: 'WARNING',
+        category: 'CAPTION',
+        message: 'Dominant caption',
+        autoFixAvailable: true,
+        autoFixApplied: true,
+        resolved: true,
+        resolution: 'Reduced caption size',
+      },
+      {
+        code: 'EVIDENCE_MOTION_EXCESSIVE',
+        severity: 'WARNING',
+        category: 'MOTION',
+        message: 'Excessive motion',
+        autoFixAvailable: true,
+        autoFixApplied: true,
+        resolved: true,
+        resolution: 'Softened motion scale',
+      },
+      {
+        code: 'FLASH_TRANSITION_IN_PROOF_OR_CTA',
+        severity: 'WARNING',
+        category: 'TRANSITION',
+        message: 'Flash transition in proof',
+        autoFixAvailable: true,
+        autoFixApplied: true,
+        resolved: true,
+        resolution: 'Replaced flash with cut',
+      },
+    ];
+
+    const result = calculateQualityScore(resolvedWarningIssues);
+    assert(result.score === 100, `TEST 16.1: Score with 3 resolved warnings is 100 (got ${result.score})`);
+    assert(result.status === 'PASS', 'TEST 16.2: Status is PASS');
+    assert(result.classification === 'READY', 'TEST 16.3: Classification is READY');
+    assert(result.resolvedWarningCount === 3, 'TEST 16.4: resolvedWarningCount is 3');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 17 — Unresolved vs Resolved WARNING comparison
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 17: Unresolved vs Resolved WARNING Score Comparison ---');
+  {
+    const unresolvedIssues: CreativeQualityIssue[] = [
+      { code: 'W1', severity: 'WARNING', category: 'MOTION', message: 'Unresolved 1', autoFixAvailable: false, resolved: false },
+      { code: 'W2', severity: 'WARNING', category: 'MOTION', message: 'Unresolved 2', autoFixAvailable: false, resolved: false },
+    ];
+    const resolvedIssues: CreativeQualityIssue[] = [
+      { code: 'W1', severity: 'WARNING', category: 'MOTION', message: 'Resolved 1', autoFixAvailable: true, resolved: true, autoFixApplied: true, resolution: 'Fixed' },
+      { code: 'W2', severity: 'WARNING', category: 'MOTION', message: 'Resolved 2', autoFixAvailable: true, resolved: true, autoFixApplied: true, resolution: 'Fixed' },
+    ];
+
+    const unresolvedRes = calculateQualityScore(unresolvedIssues);
+    const resolvedRes = calculateQualityScore(resolvedIssues);
+
+    assert(unresolvedRes.score === 92, `TEST 17.1: Unresolved 2x WARNING score is 92 (got ${unresolvedRes.score})`);
+    assert(resolvedRes.score === 100, `TEST 17.2: Resolved 2x WARNING score is 100 (got ${resolvedRes.score})`);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 18 — Resolved ERROR retains small -2 penalty vs unresolved -12
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 18: Resolved ERROR Penalty vs Unresolved ERROR ---');
+  {
+    const unresolvedErr: CreativeQualityIssue[] = [
+      { code: 'E1', severity: 'ERROR', category: 'RHYTHM', message: 'Unresolved Error', autoFixAvailable: false, resolved: false },
+    ];
+    const resolvedErr: CreativeQualityIssue[] = [
+      { code: 'E1', severity: 'ERROR', category: 'RHYTHM', message: 'Resolved Error', autoFixAvailable: true, resolved: true, autoFixApplied: true, resolution: 'Intervention resolved' },
+    ];
+
+    const unRes = calculateQualityScore(unresolvedErr);
+    const resRes = calculateQualityScore(resolvedErr);
+
+    assert(unRes.score === 88, `TEST 18.1: Unresolved ERROR score is 88 (got ${unRes.score})`);
+    assert(resRes.score === 98, `TEST 18.2: Resolved ERROR score is 98 (got ${resRes.score})`);
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 19 — canProceedAfterQualityGate returns false when status is FAIL
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 19: canProceedAfterQualityGate Blocks on FAIL Status ---');
+  {
+    const failReport = {
+      status: 'FAIL' as const,
+      score: 50,
+      classification: 'NOT_READY' as const,
+      issues: [],
+      blockingIssueCount: 0,
+      warningCount: 0,
+      autoFixCount: 0,
+      sceneComplexity: [],
+    };
+    assert(canProceedAfterQualityGate(failReport) === false, 'TEST 19.1: canProceedAfterQualityGate is false for status FAIL');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 20 — canProceedAfterQualityGate returns false when blockingIssueCount > 0
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 20: canProceedAfterQualityGate Blocks on blockingIssueCount > 0 ---');
+  {
+    const blockedReport = {
+      status: 'FAIL' as const,
+      score: 75,
+      classification: 'NOT_READY' as const,
+      issues: [{ code: 'TIMELINE_NEGATIVE_DURATION', severity: 'BLOCKING' as const, category: 'RHYTHM' as const, message: 'Bad', autoFixAvailable: false }],
+      blockingIssueCount: 1,
+      warningCount: 0,
+      autoFixCount: 0,
+      sceneComplexity: [],
+    };
+    assert(canProceedAfterQualityGate(blockedReport) === false, 'TEST 20.1: canProceedAfterQualityGate is false when blockingIssueCount > 0');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 21 — canProceedAfterQualityGate allows PASS and PASS_WITH_WARNINGS
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 21: canProceedAfterQualityGate Allows Non-Blocking Workflows ---');
+  {
+    const passReport = {
+      status: 'PASS' as const,
+      score: 100,
+      classification: 'READY' as const,
+      issues: [],
+      blockingIssueCount: 0,
+      warningCount: 0,
+      autoFixCount: 0,
+      sceneComplexity: [],
+    };
+    const warnReport = {
+      status: 'PASS_WITH_WARNINGS' as const,
+      score: 85,
+      classification: 'READY_WITH_WARNINGS' as const,
+      issues: [{ code: 'ATTENTION_TARGETS_EXCEEDED', severity: 'WARNING' as const, category: 'COMPOSITION' as const, message: 'Warning', autoFixAvailable: false }],
+      blockingIssueCount: 0,
+      warningCount: 1,
+      autoFixCount: 0,
+      sceneComplexity: [],
+    };
+
+    assert(canProceedAfterQualityGate(passReport) === true, 'TEST 21.1: canProceedAfterQualityGate is true for PASS');
+    assert(canProceedAfterQualityGate(warnReport) === true, 'TEST 21.2: canProceedAfterQualityGate is true for PASS_WITH_WARNINGS');
+    assert(canProceedAfterQualityGate(null) === true, 'TEST 21.3: canProceedAfterQualityGate is true when report is undefined/null');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 22 — Negative timeline duration triggers BLOCKING issue and status FAIL
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 22: Negative Duration Causes BLOCKING and FAIL ---');
+  {
+    const corruptScenes: SceneEditPlan[] = [
+      createMockScene({ id: 2201, start: 5.0, end: 2.0 }), // Inverted start/end
+    ];
+
+    const { report } = runCreativeQualityGate(corruptScenes, { autoFix: true });
+    assert(report.status === 'FAIL', 'TEST 22.1: Report status is FAIL');
+    assert(report.blockingIssueCount >= 1, 'TEST 22.2: blockingIssueCount >= 1');
+    assert(canProceedAfterQualityGate(report) === false, 'TEST 22.3: canProceedAfterQualityGate is false');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 23 — Disordered scenes trigger BLOCKING issue and status FAIL
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 23: Disordered Scenes Cause BLOCKING and FAIL ---');
+  {
+    const disorderedScenes: SceneEditPlan[] = [
+      createMockScene({ id: 2301, start: 3.0, end: 6.0 }),
+      createMockScene({ id: 2302, start: 1.0, end: 4.0 }), // Starts before previous
+    ];
+
+    const { report } = runCreativeQualityGate(disorderedScenes, { autoFix: true });
+    assert(report.status === 'FAIL', 'TEST 23.1: Disordered scenes result in FAIL');
+    assert(report.blockingIssueCount >= 1, 'TEST 23.2: Disordered scenes have blockingIssueCount >= 1');
+    assert(canProceedAfterQualityGate(report) === false, 'TEST 23.3: canProceedAfterQualityGate is false');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 24 — End-to-end Quality Gate run with auto-fixes maintains high score
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 24: End-to-End Auto-Fix High Score Maintenance ---');
+  {
+    const scenesWithFixableFlaws: SceneEditPlan[] = [
+      createMockScene({
+        id: 2401,
+        start: 0,
+        end: 2.5,
+        role: 'hook',
+        adRole: 'hook',
+        motion: 'slow_zoom_in',
+        motion_scale: 1.05,
+        speech_start: 0.1,
+        speech_end: 2.3,
+        speech_duration: 2.2,
+      }),
+      createMockScene({
+        id: 2402,
+        start: 2.5,
+        end: 5.5,
+        role: 'proof',
+        adRole: 'proof',
+        visual_evidence: {
+          type: 'SCREEN_PROOF',
+          title: 'ROAS Evidence',
+          metricValue: '4.8x',
+        },
+        caption_density_status: 'power_highlight', // Fixable
+        motion: 'punch_zoom', // Fixable
+        motion_scale: 1.25, // Fixable
+        transition: 'flash', // Fixable
+        editing_rhythm_plan: {
+          preferredTransition: 'flash',
+        } as any,
+        speech_start: 2.6,
+        speech_end: 5.3,
+        speech_duration: 2.7,
+      }),
+    ];
+
+    const { report, validatedScenes } = runCreativeQualityGate(scenesWithFixableFlaws, { autoFix: true });
+    assert(report.status === 'PASS', `TEST 24.1: Status is PASS (got ${report.status})`);
+    assert(report.score >= 95, `TEST 24.2: Score is >= 95 after auto-fixes (got ${report.score})`);
+    assert(report.blockingIssueCount === 0, 'TEST 24.3: 0 blocking issues');
+    assert(canProceedAfterQualityGate(report) === true, 'TEST 24.4: Can proceed to preview/export');
+    assert(validatedScenes[1].motion === 'normal', 'TEST 24.5: Proof motion auto-fixed to normal');
+    assert(validatedScenes[1].transition === 'cut', 'TEST 24.6: Proof transition auto-fixed to cut');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 25 — Non-destructive validation cloning verification
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 25: Non-Destructive Pure Validation ---');
+  {
+    const originalScenes: SceneEditPlan[] = [
+      createMockScene({
+        id: 2501,
+        start: 0,
+        end: 3.0,
+        adRole: 'proof',
+        motion: 'punch_zoom',
+        motion_scale: 1.25,
+      }),
+    ];
+
+    const { validatedScenes } = runCreativeQualityGate(originalScenes, { autoFix: true });
+    assert(originalScenes[0].motion === 'punch_zoom', 'TEST 25.1: Original scene motion untouched');
+    assert(originalScenes[0].motion_scale === 1.25, 'TEST 25.2: Original scene motion_scale untouched');
+    assert(validatedScenes[0].motion === 'normal', 'TEST 25.3: Validated scene motion softened to normal');
   }
 
   console.log(`\n=== STEP 9.6 TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);

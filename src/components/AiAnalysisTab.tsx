@@ -63,6 +63,20 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
   const { transcript, analysis, stats, creative_audit, creative_quality_report, funnel_stage } = project;
   const [showQualityGateDetails, setShowQualityGateDetails] = useState(false);
 
+  const isBlocked = Boolean(
+    creative_quality_report &&
+      (creative_quality_report.status === 'FAIL' || (creative_quality_report.blockingIssueCount ?? 0) > 0)
+  );
+  const blockingCount = creative_quality_report?.blockingIssueCount ?? 0;
+
+  const handleProceed = () => {
+    // Defensive navigation guard: never proceed if quality gate has blocking issues or FAIL status
+    if (isBlocked) {
+      return;
+    }
+    onProceedToPreview();
+  };
+
   const toggleReasoning = (id: string) => {
     setExpandedReasoning((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -88,14 +102,26 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
             <h2 className="text-lg font-bold text-[var(--fg-app)] tracking-tight">{project.title}</h2>
           </div>
 
-          <button
-            id="btn-proceed-to-edit-plan"
-            onClick={onProceedToPreview}
-            className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-colors shrink-0 cursor-pointer self-start md:self-auto"
-          >
-            <span>Continue to Edit & Preview</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              id="btn-proceed-to-edit-plan"
+              onClick={handleProceed}
+              disabled={isBlocked}
+              className={`px-4 py-2.5 rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-colors shrink-0 ${
+                isBlocked
+                  ? 'bg-[var(--secondary)] text-[var(--muted-foreground)] border border-rose-500/30 cursor-not-allowed opacity-60'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+              } self-start md:self-auto`}
+            >
+              <span>{isBlocked ? 'Blocked by Quality Gate' : 'Continue to Edit & Preview'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            {isBlocked && (
+              <span className="text-[10px] font-semibold text-rose-500">
+                {blockingCount} masalah teknis harus diperbaiki sebelum preview.
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Compact Key Metrics Strip */}
@@ -446,13 +472,26 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
                             [{issue.category}] {issue.code}
                           </span>
                         </div>
-                        {issue.autoFixApplied && (
+                        {issue.resolved || issue.autoFixApplied ? (
                           <span className="text-[9px] font-semibold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
                             Auto-Fixed
+                          </span>
+                        ) : issue.severity === 'BLOCKING' ? (
+                          <span className="text-[9px] font-semibold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                            Blocking Issue
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-semibold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                            Unresolved
                           </span>
                         )}
                       </div>
                       <p className="text-[11px] text-[var(--fg-app)]">{issue.message}</p>
+                      {issue.resolution && (
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                          ✓ {issue.resolution}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -465,17 +504,27 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
       {/* Bottom Sticky Action Bar */}
       <div className="alco-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--card)]">
         <div>
-          <h4 className="text-xs font-bold text-[var(--fg-app)]">AI Analysis Complete</h4>
+          <h4 className="text-xs font-bold text-[var(--fg-app)]">
+            {isBlocked ? 'Perbaikan diperlukan sebelum melanjutkan' : 'AI Analysis Complete'}
+          </h4>
           <p className="text-[11px] text-[var(--muted-foreground)]">
-            Proceed to the timeline editor to review dynamic zooms, captions, and B-roll overlays.
+            {isBlocked
+              ? `${blockingCount} masalah teknis (BLOCKING) harus diselesaikan sebelum dapat melanjutkan ke timeline editor.`
+              : 'Proceed to the timeline editor to review dynamic zooms, captions, and B-roll overlays.'}
           </p>
         </div>
 
         <button
-          onClick={onProceedToPreview}
-          className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer shrink-0"
+          id="btn-bottom-proceed-to-edit-plan"
+          onClick={handleProceed}
+          disabled={isBlocked}
+          className={`px-5 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors shrink-0 ${
+            isBlocked
+              ? 'bg-[var(--secondary)] text-[var(--muted-foreground)] border border-rose-500/30 cursor-not-allowed opacity-60'
+              : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+          }`}
         >
-          <span>Continue to Edit & Preview</span>
+          <span>{isBlocked ? 'Blocked by Quality Gate' : 'Continue to Edit & Preview'}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

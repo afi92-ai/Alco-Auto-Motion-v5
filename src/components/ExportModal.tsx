@@ -491,6 +491,12 @@ export function evaluateFinalExportReadiness(
 
   // 14. Creative Editing Quality Gate (Batch 5 Requirement)
   let creativeGatePass = true;
+  if (project?.creative_quality_report) {
+    if (project.creative_quality_report.status === 'FAIL' || (project.creative_quality_report.blockingIssueCount ?? 0) > 0) {
+      creativeGatePass = false;
+      failureReasons.push(`Creative Quality Gate failed (${project.creative_quality_report.blockingIssueCount || 'blocking'} unresolved issue(s))`);
+    }
+  }
   if (parity) {
     if (parity.creativeGatePassed === false || (parity.creativeAuditScore !== undefined && parity.creativeAuditScore < 50)) {
       creativeGatePass = false;
@@ -3086,12 +3092,40 @@ echo "Render Selesai: output_alco_24fps.mp4"
     detail: sfxDetail,
   };
 
+  let creativeQualityStatus: 'PASS' | 'WARNING' | 'FAIL' | 'BELUM DICEK' = 'PASS';
+  let creativeQualityDetail = 'Quality Gate lolos';
+
+  if (currentProject.creative_quality_report) {
+    if (currentProject.creative_quality_report.status === 'FAIL' || (currentProject.creative_quality_report.blockingIssueCount ?? 0) > 0) {
+      creativeQualityStatus = 'FAIL';
+      creativeQualityDetail = `${currentProject.creative_quality_report.blockingIssueCount} blocking issue terdeteksi`;
+    } else if (currentProject.creative_quality_report.status === 'PASS_WITH_WARNINGS') {
+      creativeQualityStatus = 'WARNING';
+      creativeQualityDetail = `${currentProject.creative_quality_report.warningCount ?? 0} warning (non-blocking)`;
+    } else {
+      creativeQualityStatus = 'PASS';
+      creativeQualityDetail = `Skor ${currentProject.creative_quality_report.score}/100`;
+    }
+  } else {
+    creativeQualityStatus = 'BELUM DICEK';
+    creativeQualityDetail = 'Belum dianalisis';
+  }
+
+  const creativeQualityCheck = {
+    label: 'Creative Quality Gate',
+    status: creativeQualityStatus,
+    detail: creativeQualityDetail,
+  };
+
   let exportReadyStatus: 'PASS' | 'WARNING' | 'FAIL' | 'BELUM DICEK' = 'PASS';
   let exportReadyDetail = 'Siap render MP4/WebM';
 
   if (!sourceVideoValid) {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = 'Video input belum diunggah';
+  } else if (creativeQualityStatus === 'FAIL') {
+    exportReadyStatus = 'FAIL';
+    exportReadyDetail = 'Ada blocking issue pada Quality Gate';
   } else if (selectedTier === 'server_mp4' && backendMode !== 'available') {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = backendMode === 'missing' ? 'Backend Server Off' : 'FFmpeg Server Missing';
@@ -3110,6 +3144,7 @@ echo "Render Selesai: output_alco_24fps.mp4"
     captionCheck,
     brollCheck,
     sfxCheck,
+    creativeQualityCheck,
     exportReadyCheck,
   ];
 
