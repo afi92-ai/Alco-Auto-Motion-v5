@@ -569,6 +569,7 @@ export function useAiWorkflow({
         stats: planData.stats,
         funnel_stage: planData.funnel_stage || 'META_ADS',
         creative_audit: planData.creative_audit,
+        creative_quality_report: planData.creative_quality_report,
       };
 
       await new Promise((r) => setTimeout(r, 300));

@@ -19,6 +19,7 @@ import { determineBrollDecision } from './brollDirector';
 import { mapContentTypeToFunnelStage, selectCaptionGrammar } from './funnelEngine';
 import { generateVisualEvidence } from './evidenceEngine';
 import { validateCreativePerformance } from './creativeValidator';
+import { runCreativeQualityGate } from './creativeQualityGate';
 import { STYLE_PRESET_PROFILES, getStyleProfile } from './styleProfiles';
 import { analyzeTalkingHeadScene, analyzeProjectTalkingHeadDominance } from './talkingHeadDirector';
 import { analyzeSceneVisualCorrection, summarizeProjectVisualQuality } from './lightingDirector';
@@ -43,6 +44,7 @@ export * from './decisionEngine';
 export * from './assetMatcher';
 export * from './sceneCompositionEngine';
 export * from './editingRhythmEngine';
+export * from './creativeQualityGate';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
   clean_creator: {
@@ -355,6 +357,16 @@ export function buildIntelligentEditPlan(
   // 6. Run Creative Validation Layer (Prioritas 4)
   const auditResult = validateCreativePerformance(partialProject);
   partialProject.creative_audit = auditResult;
+
+  // 7. Step 9.6: Run Creative Quality Gate & Final Editing Validation
+  const qualityGateResult = runCreativeQualityGate(scenes, {
+    autoFix: true,
+    userAssets,
+    project: partialProject,
+    totalDuration: duration,
+  });
+  partialProject.scenes = qualityGateResult.validatedScenes;
+  partialProject.creative_quality_report = qualityGateResult.report;
 
   return partialProject;
 }

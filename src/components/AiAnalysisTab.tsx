@@ -60,7 +60,8 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
     );
   }
 
-  const { transcript, analysis, stats, creative_audit, funnel_stage } = project;
+  const { transcript, analysis, stats, creative_audit, creative_quality_report, funnel_stage } = project;
+  const [showQualityGateDetails, setShowQualityGateDetails] = useState(false);
 
   const toggleReasoning = (id: string) => {
     setExpandedReasoning((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -340,6 +341,122 @@ export const AiAnalysisTab: React.FC<AiAnalysisTabProps> = ({ project, onProceed
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Step 9.6 Creative Quality Gate & Final Editing Validation */}
+      {creative_quality_report && (
+        <section className="alco-card space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowQualityGateDetails(!showQualityGateDetails)}
+            className="w-full flex items-center justify-between text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <ShieldCheck
+                className={`w-4 h-4 ${
+                  creative_quality_report.status === 'PASS'
+                    ? 'text-emerald-500'
+                    : creative_quality_report.status === 'PASS_WITH_WARNINGS'
+                    ? 'text-amber-500'
+                    : 'text-rose-500'
+                }`}
+              />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--fg-app)]">
+                Creative Quality Gate (Step 9.6)
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  creative_quality_report.classification === 'READY'
+                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                    : creative_quality_report.classification === 'READY_WITH_WARNINGS'
+                    ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                    : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                }`}
+              >
+                {creative_quality_report.classification} ({creative_quality_report.score}/100)
+              </span>
+              {showQualityGateDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </button>
+
+          {showQualityGateDetails && (
+            <div className="space-y-4 pt-3 border-t border-[var(--border)]">
+              {/* Summary KPIs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="alco-panel text-center py-2">
+                  <span className="alco-section-label text-[9px] block">Quality Score</span>
+                  <span className="font-bold text-xs text-[var(--fg-app)]">
+                    {creative_quality_report.score} / 100
+                  </span>
+                </div>
+                <div className="alco-panel text-center py-2">
+                  <span className="alco-section-label text-[9px] block">Auto-Fixes Applied</span>
+                  <span className="font-bold text-xs text-emerald-500">
+                    {creative_quality_report.autoFixCount}
+                  </span>
+                </div>
+                <div className="alco-panel text-center py-2">
+                  <span className="alco-section-label text-[9px] block">Warnings</span>
+                  <span className="font-bold text-xs text-amber-500">
+                    {creative_quality_report.warningCount}
+                  </span>
+                </div>
+                <div className="alco-panel text-center py-2">
+                  <span className="alco-section-label text-[9px] block">Blocking Issues</span>
+                  <span
+                    className={`font-bold text-xs ${
+                      creative_quality_report.blockingIssueCount > 0 ? 'text-rose-500' : 'text-[var(--fg-app)]'
+                    }`}
+                  >
+                    {creative_quality_report.blockingIssueCount}
+                  </span>
+                </div>
+              </div>
+
+              {/* Detected Issues / Auto-Fixes list */}
+              {creative_quality_report.issues.length > 0 && (
+                <div className="space-y-2">
+                  <span className="alco-section-label block">QUALITY GATE LOG & FIXES</span>
+                  {creative_quality_report.issues.map((issue, idx) => (
+                    <div
+                      key={`${issue.code}-${idx}`}
+                      className="p-3 rounded-lg bg-[var(--secondary)] border border-[var(--border)] text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                              issue.severity === 'BLOCKING'
+                                ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30'
+                                : issue.severity === 'ERROR'
+                                ? 'bg-orange-500/20 text-orange-500 border border-orange-500/30'
+                                : issue.severity === 'WARNING'
+                                ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                                : 'bg-blue-500/20 text-blue-500 border border-blue-500/30'
+                            }`}
+                          >
+                            {issue.severity}
+                          </span>
+                          <span className="font-mono text-[10px] text-[var(--muted-foreground)]">
+                            [{issue.category}] {issue.code}
+                          </span>
+                        </div>
+                        {issue.autoFixApplied && (
+                          <span className="text-[9px] font-semibold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                            Auto-Fixed
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--fg-app)]">{issue.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>

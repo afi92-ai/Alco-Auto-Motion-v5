@@ -603,6 +603,56 @@ export interface AlcoEditingProject {
     retention_estimate: string;
   };
   output_audit?: OutputQualityAuditResult;
+  creative_quality_report?: CreativeQualityReport;
+}
+
+// ============================================================================
+// STEP 9.6 CREATIVE QUALITY GATE & FINAL EDITING VALIDATION CONTRACTS
+// ============================================================================
+
+export type CreativeQualitySeverity = 'INFO' | 'WARNING' | 'ERROR' | 'BLOCKING';
+
+export type CreativeQualityCategory =
+  | 'CAPTION'
+  | 'ASSET'
+  | 'COMPOSITION'
+  | 'RHYTHM'
+  | 'MOTION'
+  | 'TRANSITION'
+  | 'EVIDENCE'
+  | 'AUDIO'
+  | 'PARITY';
+
+export interface CreativeQualityIssue {
+  code: string;
+  severity: CreativeQualitySeverity;
+  category: CreativeQualityCategory;
+  message: string;
+  sceneId?: number | string;
+  autoFixAvailable: boolean;
+  autoFixApplied?: boolean;
+}
+
+export type CreativeQualityStatus = 'PASS' | 'PASS_WITH_WARNINGS' | 'FAIL';
+export type CreativeQualityClassification = 'READY' | 'READY_WITH_WARNINGS' | 'NEEDS_REVIEW' | 'NOT_READY';
+
+export interface SceneVisualComplexityAnalysis {
+  sceneId: number | string;
+  score: number;
+  category: 'SAFE' | 'MODERATE' | 'HIGH' | 'OVERLOADED';
+  attentionTargetCount: number;
+  factors: string[];
+}
+
+export interface CreativeQualityReport {
+  status: CreativeQualityStatus;
+  score: number;
+  classification: CreativeQualityClassification;
+  issues: CreativeQualityIssue[];
+  blockingIssueCount: number;
+  warningCount: number;
+  autoFixCount: number;
+  sceneComplexity?: SceneVisualComplexityAnalysis[];
 }
 
 export interface RenderFrameTelemetry {
