@@ -11,8 +11,9 @@ import {
   validateAudioCertification,
   calculateCertificationScore,
   canProceedToRenderExport,
+  canProceedToRendererExport,
 } from '../renderCertification';
-import { AlcoEditingProject, SceneEditPlan, EvidenceType, MotionPreset, AdRole } from '../../types';
+import { AlcoEditingProject, SceneEditPlan, EvidenceType, MotionPreset, AdRole, Mp4RuntimeVerification } from '../../types';
 
 function createMockScene(overrides: Partial<SceneEditPlan>): SceneEditPlan {
   const base: Partial<SceneEditPlan> = {
@@ -114,14 +115,18 @@ export function runTests() {
       scenes: [s1, s2, s3],
     };
 
-    const report = runRenderCertification(project);
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'VERIFIED',
+    });
     assert(report.status === 'CERTIFIED', 'TEST 1.1: Status is CERTIFIED');
     assert(report.score >= 95, 'TEST 1.2: Score is >= 95');
     assert(report.previewPass === true, 'TEST 1.3: previewPass is true');
     assert(report.canvasPass === true, 'TEST 1.4: canvasPass is true');
     assert(report.mp4Pass === true, 'TEST 1.5: mp4Pass is true');
-    assert(report.parityPass === true, 'TEST 1.6: parityPass is true');
-    assert(report.blockingIssueCount === 0, 'TEST 1.7: blockingIssueCount is 0');
+    assert(report.mp4Verified === true, 'TEST 1.6: mp4Verified is true');
+    assert(report.fullParityVerified === true, 'TEST 1.7: fullParityVerified is true');
+    assert(report.parityPass === true, 'TEST 1.8: parityPass is true');
+    assert(report.blockingIssueCount === 0, 'TEST 1.9: blockingIssueCount is 0');
   }
 
   // -------------------------------------------------------------------------
@@ -217,10 +222,13 @@ export function runTests() {
       scenes: [s1, s2],
     };
 
-    const report = runRenderCertification(project);
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'VERIFIED',
+    });
     assert(report.previewPass === true, 'TEST 5.1: previewPass is true');
     assert(report.canvasPass === true, 'TEST 5.2: canvasPass is true');
     assert(report.mp4Pass === true, 'TEST 5.3: mp4Pass is true');
+    assert(report.mp4Verified === true, 'TEST 5.4: mp4Verified is true');
   }
 
   // -------------------------------------------------------------------------
@@ -497,7 +505,240 @@ export function runTests() {
     assert(JSON.stringify(s2) === s2Snapshot, 'TEST 15.2: Scene 2 completely unmutated');
   }
 
-  console.log(`\n=== STEP 9.7 TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);
+  // -------------------------------------------------------------------------
+  // TEST 16: Step 9.7.1 - MP4 Runtime NOT_VERIFIED blocks MP4 but allows WebM
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 16: MP4 Runtime NOT_VERIFIED Hardening ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'NOT_VERIFIED',
+    });
+
+    assert(report.mp4Verified === false, 'TEST 16.1: mp4Verified is false');
+    assert(report.mp4Pass === false, 'TEST 16.2: mp4Pass is false');
+    assert(report.fullParityVerified === false, 'TEST 16.3: fullParityVerified is false');
+    assert(report.canvasPass === true, 'TEST 16.4: canvasPass is true');
+    assert(canProceedToRendererExport(report, 'WEBM') === true, 'TEST 16.5: WebM export allowed');
+    assert(canProceedToRendererExport(report, 'MP4') === false, 'TEST 16.6: MP4 export blocked');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 17: Step 9.7.1 - MP4 Runtime UNAVAILABLE emits MP4_FFMPEG_UNAVAILABLE
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 17: MP4 Runtime UNAVAILABLE ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'UNAVAILABLE',
+    });
+
+    assert(report.mp4Verified === false, 'TEST 17.1: mp4Verified is false');
+    assert(report.mp4Pass === false, 'TEST 17.2: mp4Pass is false');
+    const issue = report.issues.find((i) => i.code === 'MP4_FFMPEG_UNAVAILABLE');
+    assert(issue !== undefined, 'TEST 17.3: MP4_FFMPEG_UNAVAILABLE issue present');
+    assert(issue?.severity === 'WARNING', 'TEST 17.4: Issue severity is WARNING');
+    assert(canProceedToRendererExport(report, 'MP4') === false, 'TEST 17.5: MP4 export blocked');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 18: Step 9.7.1 - MP4 Runtime PLACEHOLDER emits MP4_FFMPEG_PLACEHOLDER
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 18: MP4 Runtime PLACEHOLDER ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'PLACEHOLDER',
+    });
+
+    assert(report.mp4Verified === false, 'TEST 18.1: mp4Verified is false');
+    assert(report.mp4Pass === false, 'TEST 18.2: mp4Pass is false');
+    const issue = report.issues.find((i) => i.code === 'MP4_FFMPEG_PLACEHOLDER');
+    assert(issue !== undefined, 'TEST 18.3: MP4_FFMPEG_PLACEHOLDER issue present');
+    assert(canProceedToRendererExport(report, 'MP4') === false, 'TEST 18.4: MP4 export blocked');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 19: Step 9.7.1 - MP4 Runtime VERIFIED -> fullParityVerified = true
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 19: MP4 Runtime VERIFIED Full Parity ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const report = runRenderCertification(project, {
+      mp4RuntimeVerification: 'VERIFIED',
+    });
+
+    assert(report.mp4Verified === true, 'TEST 19.1: mp4Verified is true');
+    assert(report.mp4Pass === true, 'TEST 19.2: mp4Pass is true');
+    assert(report.fullParityVerified === true, 'TEST 19.3: fullParityVerified is true');
+    assert(canProceedToRendererExport(report, 'MP4') === true, 'TEST 19.4: canProceedToRendererExport MP4 is true');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 20: Step 9.7.1 - Default options omit explicit verification -> NOT_VERIFIED
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 20: Default Options Runtime Safety ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const report = runRenderCertification(project);
+
+    assert(report.mp4Verified === false, 'TEST 20.1: Default mp4Verified is false');
+    assert(report.mp4Pass === false, 'TEST 20.2: Default mp4Pass is false');
+    assert(report.fullParityVerified === false, 'TEST 20.3: Default fullParityVerified is false');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 21: Step 9.7.1 - canProceedToRenderExport blocks on NOT_CERTIFIED
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 21: canProceedToRenderExport Hard Gate ---');
+  {
+    const notCertReport = {
+      status: 'NOT_CERTIFIED' as const,
+      score: 40,
+      previewPass: false,
+      canvasPass: false,
+      mp4Pass: false,
+      mp4Verified: false,
+      fullParityVerified: false,
+      parityPass: false,
+      blockingIssueCount: 2,
+      warningCount: 0,
+      issues: [],
+      capabilityMatrix: {} as any,
+      generatedAt: '2026-09-10T00:00:00.000Z',
+    };
+
+    assert(canProceedToRenderExport(notCertReport) === false, 'TEST 21.1: NOT_CERTIFIED blocks overall export');
+    assert(canProceedToRendererExport(notCertReport, 'WEBM') === false, 'TEST 21.2: NOT_CERTIFIED blocks WEBM export');
+    assert(canProceedToRendererExport(notCertReport, 'MP4') === false, 'TEST 21.3: NOT_CERTIFIED blocks MP4 export');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 22: Step 9.7.1 - canProceedToRenderExport allows CERTIFIED & CERTIFIED_WITH_WARNINGS
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 22: canProceedToRenderExport Allowed States ---');
+  {
+    const certifiedReport = {
+      status: 'CERTIFIED' as const,
+      score: 100,
+      previewPass: true,
+      canvasPass: true,
+      mp4Pass: true,
+      mp4Verified: true,
+      fullParityVerified: true,
+      parityPass: true,
+      blockingIssueCount: 0,
+      warningCount: 0,
+      issues: [],
+      capabilityMatrix: {} as any,
+      generatedAt: '2026-09-10T00:00:00.000Z',
+    };
+
+    const warningsReport = {
+      ...certifiedReport,
+      status: 'CERTIFIED_WITH_WARNINGS' as const,
+      warningCount: 1,
+    };
+
+    assert(canProceedToRenderExport(certifiedReport) === true, 'TEST 22.1: CERTIFIED allows overall export');
+    assert(canProceedToRenderExport(warningsReport) === true, 'TEST 22.2: CERTIFIED_WITH_WARNINGS allows overall export');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 23: Step 9.7.1 - WebM is NOT blocked when native MP4 runtime is unverified
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 23: Non-blocking WebM on Unverified MP4 Runtime ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const reportUnverified = runRenderCertification(project, {
+      mp4RuntimeVerification: 'NOT_VERIFIED',
+    });
+
+    const reportUnavailable = runRenderCertification(project, {
+      mp4RuntimeVerification: 'UNAVAILABLE',
+    });
+
+    assert(canProceedToRendererExport(reportUnverified, 'WEBM') === true, 'TEST 23.1: WebM allowed when MP4 NOT_VERIFIED');
+    assert(canProceedToRendererExport(reportUnavailable, 'WEBM') === true, 'TEST 23.2: WebM allowed when MP4 UNAVAILABLE');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 24: Step 9.7.1 - MP4 is strictly blocked when not verified
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 24: Strict MP4 Blocking on Non-Verified States ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const rNotVer = runRenderCertification(project, { mp4RuntimeVerification: 'NOT_VERIFIED' });
+    const rUnavail = runRenderCertification(project, { mp4RuntimeVerification: 'UNAVAILABLE' });
+    const rPlace = runRenderCertification(project, { mp4RuntimeVerification: 'PLACEHOLDER' });
+
+    assert(canProceedToRendererExport(rNotVer, 'MP4') === false, 'TEST 24.1: MP4 blocked on NOT_VERIFIED');
+    assert(canProceedToRendererExport(rUnavail, 'MP4') === false, 'TEST 24.2: MP4 blocked on UNAVAILABLE');
+    assert(canProceedToRendererExport(rPlace, 'MP4') === false, 'TEST 24.3: MP4 blocked on PLACEHOLDER');
+  }
+
+  // -------------------------------------------------------------------------
+  // TEST 25: Step 9.7.1 - Deterministic output with provided generatedAt
+  // -------------------------------------------------------------------------
+  console.log('\n--- Test 25: Deterministic Output with Fixed Timestamp ---');
+  {
+    const s1 = createMockScene({ id: 1, start: 0, end: 3.0 });
+    const project: Partial<AlcoEditingProject> = {
+      total_duration: 3.0,
+      scenes: [s1],
+    };
+
+    const fixedTime = '2026-09-10T12:00:00.000Z';
+    const reportA = runRenderCertification(project, {
+      mp4RuntimeVerification: 'VERIFIED',
+      generatedAt: fixedTime,
+    });
+
+    const reportB = runRenderCertification(project, {
+      mp4RuntimeVerification: 'VERIFIED',
+      generatedAt: fixedTime,
+    });
+
+    assert(JSON.stringify(reportA) === JSON.stringify(reportB), 'TEST 25.1: Exact deep string equality for deterministic report');
+    assert(reportA.generatedAt === fixedTime, 'TEST 25.2: generatedAt timestamp is preserved');
+  }
+
+  console.log(`\n=== STEP 9.7 / 9.7.1 TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);
   if (failed > 0) {
     process.exit(1);
   }

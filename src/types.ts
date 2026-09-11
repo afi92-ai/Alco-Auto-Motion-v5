@@ -683,6 +683,8 @@ export type RenderCertificationStatus = 'CERTIFIED' | 'CERTIFIED_WITH_WARNINGS' 
 
 export type RenderCertificationClassification = 'CERTIFIED' | 'CERTIFIED_WITH_WARNINGS' | 'NOT_CERTIFIED';
 
+export type Mp4RuntimeVerification = 'VERIFIED' | 'UNAVAILABLE' | 'PLACEHOLDER' | 'NOT_VERIFIED';
+
 export interface RenderCertificationIssue {
   code: string;
   severity: RenderCertificationSeverity;
@@ -724,11 +726,18 @@ export interface RenderCertificationReport {
   previewPass: boolean;
   canvasPass: boolean;
   mp4Pass: boolean;
+  mp4Verified: boolean;
   parityPass: boolean;
+  fullParityVerified: boolean;
   blockingIssueCount: number;
   warningCount: number;
   generatedAt?: string;
   capabilityMatrix?: RendererCapabilityMatrix;
+  rendererVerification?: {
+    preview: 'VERIFIED';
+    canvas: 'VERIFIED';
+    mp4: Mp4RuntimeVerification;
+  };
   mp4CertificationReason?: string;
 }
 

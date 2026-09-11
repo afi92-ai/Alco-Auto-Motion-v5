@@ -31,6 +31,7 @@ import {
   RenderCertificationRenderer,
   RenderCertificationStatus,
   RenderCertificationClassification,
+  Mp4RuntimeVerification,
   ExpectedRenderState,
   RendererCapabilityMatrix,
 } from '../types';
@@ -48,6 +49,8 @@ import {
   shouldRenderEvidenceLayer,
 } from './sceneCompositionEngine';
 
+export type { Mp4RuntimeVerification };
+
 export interface RendererCapabilityOverrides {
   previewSupported?: Partial<Record<keyof RendererCapabilityMatrix, boolean>>;
   canvasSupported?: Partial<Record<keyof RendererCapabilityMatrix, boolean>>;
@@ -61,6 +64,8 @@ export interface RenderCertificationOptions {
   rendererOverrides?: RendererCapabilityOverrides;
   strictParityMode?: boolean;
   targetDuration?: number;
+  mp4RuntimeVerification?: Mp4RuntimeVerification;
+  generatedAt?: string;
 }
 
 /**
@@ -632,30 +637,53 @@ export function runRenderCertification(
   // 4. Output Quality Audit Aggregation
   issues.push(...validateOutputQualityCertification(project));
 
-  // 5. Check Native FFmpeg Binary Environment Status
-  let mp4CertificationReason: string | undefined = undefined;
-  let mp4BinaryValid = true;
+  // 5. Check Native FFmpeg Binary Environment Status & Runtime Verification Truth
+  let mp4RuntimeVerification: Mp4RuntimeVerification = options?.mp4RuntimeVerification || 'NOT_VERIFIED';
 
-  if (overrides?.isNativeFfmpegPlaceholder) {
-    mp4BinaryValid = false;
-    mp4CertificationReason = 'NATIVE FFMPEG PLACEHOLDER — PRODUCTION MP4 CERTIFICATION REQUIRES REAL BINARY';
-    issues.push({
-      code: 'FFMPEG_BINARY_PLACEHOLDER',
-      severity: 'WARNING',
-      renderer: 'MP4',
-      category: 'OUTPUT',
-      message: 'Native FFmpeg binary is a placeholder stub. MP4 render certification requires a production binary.',
-    });
-  } else if (overrides?.ffmpegAvailable === false) {
-    mp4BinaryValid = false;
-    mp4CertificationReason = 'FFmpeg binary unavailable in runtime environment.';
-    issues.push({
-      code: 'FFMPEG_BINARY_UNAVAILABLE',
-      severity: 'WARNING',
-      renderer: 'MP4',
-      category: 'OUTPUT',
-      message: 'FFmpeg binary is unavailable in current environment. MP4 certification not verified.',
-    });
+  // Fallback map legacy overrides if mp4RuntimeVerification was not explicitly supplied
+  if (!options?.mp4RuntimeVerification) {
+    if (overrides?.isNativeFfmpegPlaceholder) {
+      mp4RuntimeVerification = 'PLACEHOLDER';
+    } else if (overrides?.ffmpegAvailable === false) {
+      mp4RuntimeVerification = 'UNAVAILABLE';
+    }
+  }
+
+  let mp4CertificationReason: string;
+  let mp4Verified = false;
+
+  switch (mp4RuntimeVerification) {
+    case 'VERIFIED':
+      mp4Verified = true;
+      mp4CertificationReason = 'MP4 runtime verified';
+      break;
+    case 'UNAVAILABLE':
+      mp4Verified = false;
+      mp4CertificationReason = 'FFmpeg runtime unavailable';
+      issues.push({
+        code: 'MP4_FFMPEG_UNAVAILABLE',
+        severity: 'WARNING',
+        renderer: 'MP4',
+        category: 'OUTPUT',
+        message: 'FFmpeg runtime unavailable in current environment. MP4 certification not verified.',
+      });
+      break;
+    case 'PLACEHOLDER':
+      mp4Verified = false;
+      mp4CertificationReason = 'NATIVE FFMPEG PLACEHOLDER — REAL BINARY REQUIRED';
+      issues.push({
+        code: 'MP4_FFMPEG_PLACEHOLDER',
+        severity: 'WARNING',
+        renderer: 'MP4',
+        category: 'OUTPUT',
+        message: 'Native FFmpeg binary is a placeholder stub. Production MP4 render requires a real binary.',
+      });
+      break;
+    case 'NOT_VERIFIED':
+    default:
+      mp4Verified = false;
+      mp4CertificationReason = 'MP4 runtime has not been verified';
+      break;
   }
 
   // 6. Score & Status Calculation
@@ -674,15 +702,24 @@ export function runRenderCertification(
 
   const previewPass = !hasPreviewBlockingOrError && blockingCount === 0;
   const canvasPass = !hasCanvasBlockingOrError && blockingCount === 0;
-  const mp4Pass = mp4BinaryValid && !hasMp4BlockingOrError && blockingCount === 0;
+  // mp4Pass requires verified runtime truth AND zero blocking/error issues
+  const mp4Pass = mp4Verified && !hasMp4BlockingOrError && blockingCount === 0;
 
-  // Parity Pass: true when Preview, Canvas, and MP4 all agree and have no parity-breaking error issues
+  // Parity Pass: true when all verified renderers agree and no parity-breaking error issues
   const hasParityIssues = issues.some(
     (i) => i.category === 'PARITY' && (i.severity === 'ERROR' || i.severity === 'BLOCKING')
   );
-  const parityPass = previewPass && canvasPass && (!overrides || overrides.strictParityMode ? mp4Pass : true) && !hasParityIssues;
+  const parityPass = previewPass && canvasPass && (mp4Verified ? mp4Pass : true) && !hasParityIssues;
+  const fullParityVerified = previewPass && canvasPass && mp4Verified && mp4Pass && !hasParityIssues;
 
-  // 8. Build capability matrix (combining default with overrides)
+  // 8. Renderer Verification Confidence State
+  const rendererVerification = {
+    preview: 'VERIFIED' as const,
+    canvas: 'VERIFIED' as const,
+    mp4: mp4RuntimeVerification,
+  };
+
+  // 9. Build capability matrix (static implementation support baseline)
   const capabilityMatrix: RendererCapabilityMatrix = {
     hookFocalLock: {
       preview: overrides?.previewSupported?.hookFocalLock ?? DEFAULT_RENDERER_CAPABILITY_MATRIX.hookFocalLock.preview,
@@ -738,25 +775,51 @@ export function runRenderCertification(
     previewPass,
     canvasPass,
     mp4Pass,
+    mp4Verified,
     parityPass,
+    fullParityVerified,
     blockingIssueCount: blockingCount,
     warningCount,
-    generatedAt: new Date().toISOString(),
+    generatedAt: options?.generatedAt,
     capabilityMatrix,
+    rendererVerification,
     mp4CertificationReason,
   };
 }
 
 /**
  * Gate check helper for final export workflow.
- * Blocks export only if RenderCertification is NOT_CERTIFIED due to blocking technical issues.
+ * Blocks export if RenderCertification is NOT_CERTIFIED.
  */
 export function canProceedToRenderExport(
   report?: RenderCertificationReport | null
 ): boolean {
   if (!report) return true;
-  if (report.status === 'NOT_CERTIFIED' && report.blockingIssueCount > 0) {
+  if (report.status === 'NOT_CERTIFIED') {
     return false;
   }
+  return true;
+}
+
+/**
+ * Pure renderer-specific export decision helper.
+ * Distinguishes project-level safety from specific renderer runtime readiness.
+ */
+export function canProceedToRendererExport(
+  report: RenderCertificationReport | null | undefined,
+  renderer: 'WEBM' | 'MP4'
+): boolean {
+  if (!report) return true;
+  if (report.status === 'NOT_CERTIFIED') return false;
+  if (report.blockingIssueCount > 0) return false;
+
+  if (renderer === 'WEBM') {
+    return report.canvasPass;
+  }
+
+  if (renderer === 'MP4') {
+    return report.mp4Verified === true && report.mp4Pass === true;
+  }
+
   return true;
 }

@@ -9,6 +9,7 @@ import {
   RenderDiagnosticInfo,
   RenderParityDiagnostics,
   RenderCertificationReport,
+  Mp4RuntimeVerification,
 } from '../types';
 import {
   Download,
@@ -47,6 +48,11 @@ import { probeEncodedVideoBlob, VideoProbeResult } from '../engine/videoProber';
 import { ffmpegWasmExportService, EnvironmentDiagnostics } from '../engine/ffmpegWasmExportService';
 import { renderFrameToCanvas } from '../engine/renderFrame';
 import { SFX_EDITING_CONFIG } from '../config/sfxEditingConfig';
+import {
+  canProceedToRenderExport,
+  canProceedToRendererExport,
+  runRenderCertification,
+} from '../engine/renderCertification';
 import { ExportHeader } from './export/ExportHeader';
 import { ExportSettingsStage } from './export/ExportSettingsStage';
 import { RenderProgressStage } from './export/RenderProgressStage';
@@ -878,7 +884,9 @@ export function buildRenderDiagnosticReport(
     `- Certification Score: ${context.project.render_certification?.score !== undefined ? `${context.project.render_certification.score} / 100` : '100 / 100'}`,
     `- Preview Player Pass: ${context.project.render_certification?.previewPass !== false ? 'PASS' : 'FAIL'}`,
     `- Canvas / WebM Pass: ${context.project.render_certification?.canvasPass !== false ? 'PASS' : 'FAIL'}`,
-    `- MP4 Server Pass: ${context.project.render_certification?.mp4Pass !== false ? 'PASS' : (context.project.render_certification?.mp4CertificationReason || 'NOT VERIFIED')}`,
+    `- MP4 Server Pass: ${context.project.render_certification?.mp4Pass ? 'PASS' : (context.project.render_certification?.mp4CertificationReason || 'NOT VERIFIED')}`,
+    `- MP4 Runtime Verified: ${context.project.render_certification?.mp4Verified ? 'YES' : 'NO'}`,
+    `- Full Renderer Parity Verified: ${context.project.render_certification?.fullParityVerified ? 'YES' : 'NO'}`,
     `- Multi-Renderer Parity Pass: ${context.project.render_certification?.parityPass !== false ? 'PASS (100% Behavioral Parity)' : 'FAIL (Parity Mismatch Detected)'}`,
     `- Blocking Issues Count: ${context.project.render_certification?.blockingIssueCount ?? 0}`,
     `- Warning Issues Count: ${context.project.render_certification?.warningCount ?? 0}`,
@@ -1109,10 +1117,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     // Evaluate both endpoints
     const isBothHealthy = healthSuccess && pingSuccess;
 
+    let verificationStatus: Mp4RuntimeVerification = 'NOT_VERIFIED';
     if (isBothHealthy) {
+      verificationStatus = healthData?.isPlaceholder ? 'PLACEHOLDER' : 'VERIFIED';
       setBackendMode('available');
       setBackendStatusReason('Backend Express & FFmpeg aktif. Kedua endpoint (/api/render-health dan /api/render-mp4/ping) merespon dengan JSON valid.');
       setBackendHealthDetails(healthData);
+    } else if (healthData && healthData.success === true && (healthData.ffmpegAvailable === false || healthData.ffprobeAvailable === false)) {
+      verificationStatus = 'UNAVAILABLE';
+      setBackendMode('ffmpeg_missing');
+      const ffmpegErr = 'FFmpeg atau FFprobe belum tersedia di server backend. MP4 render tidak bisa dijalankan.';
+      setBackendStatusReason(ffmpegErr);
+      setBackendHealthDetails(healthData);
+    } else {
+      verificationStatus = 'NOT_VERIFIED';
+      setBackendMode('missing');
+      setBackendStatusReason(DEFAULT_MISSING_MSG);
+      setBackendHealthDetails({ error: DEFAULT_MISSING_MSG });
+    }
+
+    // Re-certify current project with true MP4 runtime verification status
+    setCurrentProject((prev) => {
+      const updatedCert = runRenderCertification(prev, {
+        mp4RuntimeVerification: verificationStatus,
+      });
+      return {
+        ...prev,
+        render_certification: updatedCert,
+      };
+    });
+
+    if (isBothHealthy) {
       return {
         mode: 'available',
         ffmpegAvailable: true,
@@ -1120,24 +1155,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       };
     }
 
-    // Check if FFmpeg is missing on backend
     if (healthData && healthData.success === true && (healthData.ffmpegAvailable === false || healthData.ffprobeAvailable === false)) {
-      setBackendMode('ffmpeg_missing');
-      const ffmpegErr = 'FFmpeg atau FFprobe belum tersedia di server backend. MP4 render tidak bisa dijalankan.';
-      setBackendStatusReason(ffmpegErr);
-      setBackendHealthDetails(healthData);
       return {
         mode: 'ffmpeg_missing',
         ffmpegAvailable: false,
         ffprobeAvailable: healthData.ffprobeAvailable,
-        error: ffmpegErr,
+        error: 'FFmpeg atau FFprobe belum tersedia di server backend.',
       };
     }
-
-    // Otherwise, backend is missing
-    setBackendMode('missing');
-    setBackendStatusReason(DEFAULT_MISSING_MSG);
-    setBackendHealthDetails({ error: DEFAULT_MISSING_MSG });
 
     return {
       mode: 'missing',
@@ -3174,15 +3199,24 @@ echo "Render Selesai: output_alco_24fps.mp4"
   let exportReadyStatus: 'PASS' | 'WARNING' | 'FAIL' | 'BELUM DICEK' = 'PASS';
   let exportReadyDetail = 'Siap render MP4/WebM';
 
+  const isCurrentTierMp4 = selectedTier === 'server_mp4';
+  const targetRenderer = isCurrentTierMp4 ? 'MP4' : 'WEBM';
+  const canProceedCurrentRenderer = canProceedToRendererExport(currentProject.render_certification, targetRenderer);
+
   if (!sourceVideoValid) {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = 'Video input belum diunggah';
   } else if (creativeQualityStatus === 'FAIL') {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = 'Ada blocking issue pada Quality Gate';
-  } else if (renderCertificationStatus === 'FAIL') {
+  } else if (currentProject.render_certification?.status === 'NOT_CERTIFIED') {
     exportReadyStatus = 'FAIL';
-    exportReadyDetail = 'Ada blocking issue pada Render Certification';
+    exportReadyDetail = 'Render Certification NOT_CERTIFIED';
+  } else if (!canProceedCurrentRenderer) {
+    exportReadyStatus = 'FAIL';
+    exportReadyDetail = isCurrentTierMp4
+      ? (currentProject.render_certification?.mp4CertificationReason || 'MP4 runtime belum terverifikasi')
+      : 'Blocking issue pada WebM renderer';
   } else if (selectedTier === 'server_mp4' && backendMode !== 'available') {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = backendMode === 'missing' ? 'Backend Server Off' : 'FFmpeg Server Missing';
