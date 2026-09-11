@@ -1,16 +1,16 @@
 # Bundled FFmpeg Binaries for ALCO Auto Motion Desktop
 
-Place your native FFmpeg binaries in this directory for standalone desktop distribution:
+This directory contains native production FFmpeg binaries for standalone desktop distribution:
 
-- Windows:
-  - `resources/ffmpeg/ffmpeg.exe`
-  - `resources/ffmpeg/ffprobe.exe`
-- macOS:
-  - `resources/ffmpeg/ffmpeg`
-  - `resources/ffmpeg/ffprobe`
-- Linux:
-  - `resources/ffmpeg/ffmpeg`
-  - `resources/ffmpeg/ffprobe`
+- **Windows x64**:
+  - `resources/ffmpeg/ffmpeg.exe` (156.64 MB)
+  - `resources/ffmpeg/ffprobe.exe` (156.44 MB)
+  - `resources/ffmpeg/LICENSE.txt` (GNU GPL v3.0)
+
+## Distribution Metadata
+- **Source**: BtbN FFmpeg-Builds (`ffmpeg-master-latest-win64-gpl`)
+- **Target Platform**: Windows x64 (PE32+ console executable)
+- **License**: GNU General Public License v3.0 (GPLv3)
 
 ## Automatic Detection Architecture
 
@@ -22,3 +22,4 @@ When the Electron application boots:
    - System PATH (`ffmpeg`, `ffprobe`)
    - Standard OS installation paths (`/usr/bin/ffmpeg`, `C:\ffmpeg\bin\ffmpeg.exe`, etc.)
    - FFmpeg.wasm browser fallback (`public/ffmpeg/ffmpeg-core.*`)
+
