@@ -1194,6 +1194,10 @@ app.get('/api/render-health', async (req, res) => {
       ffprobeAvailable: bins.ffprobeAvailable,
       ffmpegPath: bins.ffmpegPath,
       ffprobePath: bins.ffprobePath,
+      isPlaceholder: bins.isPlaceholder === true,
+      ffmpegPlaceholder: bins.ffmpegPlaceholder === true,
+      ffprobePlaceholder: bins.ffprobePlaceholder === true,
+      validationReason: bins.validationReason || (bins.ffmpegAvailable && bins.ffprobeAvailable ? 'Valid FFmpeg binaries verified.' : 'FFmpeg runtime unavailable.'),
     });
   } catch (err: any) {
     return res.status(500).json({
@@ -1202,6 +1206,10 @@ app.get('/api/render-health', async (req, res) => {
       renderMp4Available: false,
       ffmpegAvailable: false,
       ffprobeAvailable: false,
+      isPlaceholder: false,
+      ffmpegPlaceholder: false,
+      ffprobePlaceholder: false,
+      validationReason: err?.message || 'Gagal memeriksa kesehatan server render',
       error: err?.message || 'Gagal memeriksa kesehatan server render',
     });
   }

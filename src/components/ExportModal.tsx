@@ -1008,6 +1008,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     mode: BackendMode;
     ffmpegAvailable: boolean;
     ffprobeAvailable?: boolean;
+    isPlaceholder?: boolean;
     error?: string;
   }> => {
     setBackendMode('checking');
@@ -1047,7 +1048,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             healthData?.success === true &&
             healthData?.renderMp4Available === true &&
             healthData?.ffmpegAvailable === true &&
-            healthData?.ffprobeAvailable === true;
+            healthData?.ffprobeAvailable === true &&
+            !healthData?.isPlaceholder &&
+            !healthData?.ffmpegPlaceholder &&
+            !healthData?.ffprobePlaceholder;
         } catch {
           healthJsonValid = false;
         }
@@ -1114,19 +1118,30 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     };
     setPingEndpointDiag(pingDetail);
 
-    // Evaluate both endpoints
-    const isBothHealthy = healthSuccess && pingSuccess;
+    // Section 7: Health Evaluation Order
+    const isPlaceholder =
+      healthData?.isPlaceholder === true ||
+      healthData?.ffmpegPlaceholder === true ||
+      healthData?.ffprobePlaceholder === true;
 
     let verificationStatus: Mp4RuntimeVerification = 'NOT_VERIFIED';
-    if (isBothHealthy) {
-      verificationStatus = healthData?.isPlaceholder ? 'PLACEHOLDER' : 'VERIFIED';
+
+    if (isPlaceholder) {
+      verificationStatus = 'PLACEHOLDER';
+      setBackendMode('ffmpeg_missing');
+      const placeholderReason =
+        healthData?.validationReason || 'NATIVE FFMPEG PLACEHOLDER — REAL BINARY REQUIRED';
+      setBackendStatusReason(placeholderReason);
+      setBackendHealthDetails(healthData);
+    } else if (healthSuccess && pingSuccess) {
+      verificationStatus = 'VERIFIED';
       setBackendMode('available');
       setBackendStatusReason('Backend Express & FFmpeg aktif. Kedua endpoint (/api/render-health dan /api/render-mp4/ping) merespon dengan JSON valid.');
       setBackendHealthDetails(healthData);
     } else if (healthData && healthData.success === true && (healthData.ffmpegAvailable === false || healthData.ffprobeAvailable === false)) {
       verificationStatus = 'UNAVAILABLE';
       setBackendMode('ffmpeg_missing');
-      const ffmpegErr = 'FFmpeg atau FFprobe belum tersedia di server backend. MP4 render tidak bisa dijalankan.';
+      const ffmpegErr = healthData.validationReason || 'FFmpeg atau FFprobe belum tersedia di server backend. MP4 render tidak bisa dijalankan.';
       setBackendStatusReason(ffmpegErr);
       setBackendHealthDetails(healthData);
     } else {
@@ -1147,11 +1162,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       };
     });
 
-    if (isBothHealthy) {
+    if (verificationStatus === 'VERIFIED') {
       return {
         mode: 'available',
         ffmpegAvailable: true,
         ffprobeAvailable: true,
+      };
+    }
+
+    if (verificationStatus === 'PLACEHOLDER') {
+      return {
+        mode: 'ffmpeg_missing',
+        ffmpegAvailable: false,
+        ffprobeAvailable: false,
+        isPlaceholder: true,
+        error: healthData?.validationReason || 'NATIVE FFMPEG PLACEHOLDER — REAL BINARY REQUIRED',
       };
     }
 
@@ -1160,7 +1185,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         mode: 'ffmpeg_missing',
         ffmpegAvailable: false,
         ffprobeAvailable: healthData.ffprobeAvailable,
-        error: 'FFmpeg atau FFprobe belum tersedia di server backend.',
+        error: healthData?.validationReason || 'FFmpeg atau FFprobe belum tersedia di server backend.',
       };
     }
 

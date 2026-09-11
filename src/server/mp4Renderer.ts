@@ -191,12 +191,72 @@ export interface FfmpegBinaries {
   ffprobePath: string | null;
   ffmpegAvailable: boolean;
   ffprobeAvailable: boolean;
+  ffmpegPlaceholder?: boolean;
+  ffprobePlaceholder?: boolean;
+  isPlaceholder?: boolean;
+  validationReason?: string;
+}
+
+export interface SingleBinaryResolution {
+  path: string | null;
+  available: boolean;
+  isPlaceholder: boolean;
+  reason?: string;
+}
+
+/**
+ * Pure helper to classify binary validation states deterministically:
+ * - FILE MISSING: available = false, isPlaceholder = false
+ * - FILE EXISTS BUT INVALID/STUB: available = false, isPlaceholder = true
+ * - REAL VALID BINARY: available = true, isPlaceholder = false
+ */
+export function classifyFfmpegBinaryValidation(
+  candidatePath: string | null | undefined,
+  fileExists: boolean,
+  fileSizeBytes: number,
+  versionCheckSucceeded: boolean
+): SingleBinaryResolution {
+  if (!candidatePath || !fileExists) {
+    return {
+      path: null,
+      available: false,
+      isPlaceholder: false,
+      reason: 'binary missing',
+    };
+  }
+
+  // Primary truth: successful execution of -version
+  // Secondary check: size < 100 KB (100 * 1024 bytes) is suspicious/placeholder
+  if (!versionCheckSucceeded || fileSizeBytes < 100 * 1024) {
+    return {
+      path: candidatePath,
+      available: false,
+      isPlaceholder: true,
+      reason: !versionCheckSucceeded
+        ? 'binary exists but failed runtime validation (-version)'
+        : 'binary exists but file size is implausibly small (< 100KB)',
+    };
+  }
+
+  return {
+    path: candidatePath,
+    available: true,
+    isPlaceholder: false,
+    reason: 'valid binary',
+  };
 }
 
 let cachedBinaries: FfmpegBinaries | null = null;
 
 async function checkExecutable(binPath: string, args: string[] = ['-version']): Promise<boolean> {
   try {
+    const isFilePath = path.isAbsolute(binPath) || binPath.includes('/') || binPath.includes('\\');
+    if (isFilePath && fs.existsSync(binPath)) {
+      const stats = fs.statSync(binPath);
+      if (stats.size < 100 * 1024) {
+        return false;
+      }
+    }
     await execFileAsync(binPath, args, { timeout: 3000 });
     return true;
   } catch (_) {
@@ -205,7 +265,7 @@ async function checkExecutable(binPath: string, args: string[] = ['-version']): 
 }
 
 /**
- * Resolves FFmpeg and FFprobe binary paths dynamically across platforms.
+ * Resolves FFmpeg and FFprobe binary paths dynamically across platforms with runtime placeholder classification.
  */
 export async function resolveFfmpegBinaries(forceRefresh = false): Promise<FfmpegBinaries> {
   if (cachedBinaries && !forceRefresh) {
@@ -239,26 +299,77 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
   ].filter(Boolean) as string[];
 
   let resolvedFfmpeg: string | null = null;
+  let ffmpegPlaceholderDetected = false;
+
   for (const p of candidateFfmpeg) {
-    if (await checkExecutable(p, ['-version'])) {
+    const isFilePath = path.isAbsolute(p) || p.includes('/') || p.includes('\\');
+    const fileExists = isFilePath ? fs.existsSync(p) : false;
+    const fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+
+    let versionOk = false;
+    if (fileExists && fileSizeBytes < 100 * 1024) {
+      versionOk = false;
+    } else {
+      versionOk = await checkExecutable(p, ['-version']);
+    }
+
+    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk);
+    if (versionOk && classification.available) {
       resolvedFfmpeg = p;
+      ffmpegPlaceholderDetected = false;
       break;
+    } else if (classification.isPlaceholder) {
+      ffmpegPlaceholderDetected = true;
     }
   }
 
   let resolvedFfprobe: string | null = null;
+  let ffprobePlaceholderDetected = false;
+
   for (const p of candidateFfprobe) {
-    if (await checkExecutable(p, ['-version'])) {
-      resolvedFfprobe = p;
-      break;
+    const isFilePath = path.isAbsolute(p) || p.includes('/') || p.includes('\\');
+    const fileExists = isFilePath ? fs.existsSync(p) : false;
+    const fileSizeBytes = fileExists ? (fs.statSync(p).size || 0) : 0;
+
+    let versionOk = false;
+    if (fileExists && fileSizeBytes < 100 * 1024) {
+      versionOk = false;
+    } else {
+      versionOk = await checkExecutable(p, ['-version']);
     }
+
+    const classification = classifyFfmpegBinaryValidation(p, fileExists, fileSizeBytes, versionOk);
+    if (versionOk && classification.available) {
+      resolvedFfprobe = p;
+      ffprobePlaceholderDetected = false;
+      break;
+    } else if (classification.isPlaceholder) {
+      ffprobePlaceholderDetected = true;
+    }
+  }
+
+  const ffmpegAvailable = !!resolvedFfmpeg;
+  const ffprobeAvailable = !!resolvedFfprobe;
+  const isPlaceholder = (ffmpegPlaceholderDetected || ffprobePlaceholderDetected) && (!ffmpegAvailable || !ffprobeAvailable);
+
+  let validationReason = 'FFmpeg binary missing in runtime environment.';
+  if (ffmpegAvailable && ffprobeAvailable) {
+    validationReason = 'Valid FFmpeg and FFprobe binaries verified.';
+  } else if (isPlaceholder) {
+    validationReason = 'Bundled FFmpeg executables exist but failed runtime validation.';
+  } else if (!ffmpegAvailable || !ffprobeAvailable) {
+    validationReason = 'FFmpeg atau FFprobe belum terpasang di server environment.';
   }
 
   cachedBinaries = {
     ffmpegPath: resolvedFfmpeg,
     ffprobePath: resolvedFfprobe,
-    ffmpegAvailable: !!resolvedFfmpeg,
-    ffprobeAvailable: !!resolvedFfprobe,
+    ffmpegAvailable,
+    ffprobeAvailable,
+    ffmpegPlaceholder: ffmpegPlaceholderDetected && !ffmpegAvailable,
+    ffprobePlaceholder: ffprobePlaceholderDetected && !ffprobeAvailable,
+    isPlaceholder,
+    validationReason,
   };
 
   return cachedBinaries;
