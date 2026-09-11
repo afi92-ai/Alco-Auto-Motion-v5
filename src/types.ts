@@ -604,6 +604,7 @@ export interface AlcoEditingProject {
   };
   output_audit?: OutputQualityAuditResult;
   creative_quality_report?: CreativeQualityReport;
+  render_certification?: RenderCertificationReport;
 }
 
 // ============================================================================
@@ -657,6 +658,78 @@ export interface CreativeQualityReport {
   resolvedIssueCount?: number;
   resolvedWarningCount?: number;
   sceneComplexity?: SceneVisualComplexityAnalysis[];
+}
+
+// ============================================================================
+// STEP 9.7 PRODUCTION RENDER CERTIFICATION & RENDERER PARITY CONTRACTS
+// ============================================================================
+
+export type RenderCertificationSeverity = 'INFO' | 'WARNING' | 'ERROR' | 'BLOCKING';
+
+export type RenderCertificationRenderer = 'PREVIEW' | 'CANVAS' | 'WEBM' | 'MP4' | 'ALL';
+
+export type RenderCertificationCategory =
+  | 'CAPTION'
+  | 'MOTION'
+  | 'EVIDENCE'
+  | 'TRANSITION'
+  | 'TIMELINE'
+  | 'ASSET'
+  | 'AUDIO'
+  | 'PARITY'
+  | 'OUTPUT';
+
+export type RenderCertificationStatus = 'CERTIFIED' | 'CERTIFIED_WITH_WARNINGS' | 'NOT_CERTIFIED';
+
+export type RenderCertificationClassification = 'CERTIFIED' | 'CERTIFIED_WITH_WARNINGS' | 'NOT_CERTIFIED';
+
+export interface RenderCertificationIssue {
+  code: string;
+  severity: RenderCertificationSeverity;
+  renderer?: RenderCertificationRenderer;
+  category: RenderCertificationCategory;
+  sceneId?: string | number;
+  message: string;
+}
+
+export interface RendererCapabilityMatrix {
+  hookFocalLock: { preview: boolean; canvas: boolean; mp4: boolean };
+  motionBudget: { preview: boolean; canvas: boolean; mp4: boolean };
+  midSceneRefresh: { preview: boolean; canvas: boolean; mp4: boolean };
+  evidenceHold: { preview: boolean; canvas: boolean; mp4: boolean };
+  proofStability: { preview: boolean; canvas: boolean; mp4: boolean };
+  ctaStability: { preview: boolean; canvas: boolean; mp4: boolean };
+  captionTreatment: { preview: boolean; canvas: boolean; mp4: boolean };
+  transition: { preview: boolean; canvas: boolean; mp4: boolean };
+  brollSuppression: { preview: boolean; canvas: boolean; mp4: boolean };
+}
+
+export interface ExpectedRenderState {
+  sceneId: number | string;
+  primaryAttention: string;
+  motionLevel: string;
+  effectiveTransition: string;
+  captionTreatment: string;
+  evidenceVisible: boolean;
+  evidenceSourceSceneId: number | string | null;
+  brollAllowed: boolean;
+  aggressiveMotionAllowed: boolean;
+  refreshStage: { stage: number; refreshActive: boolean; timeSinceRefresh: number };
+}
+
+export interface RenderCertificationReport {
+  status: RenderCertificationStatus;
+  score: number;
+  issues: RenderCertificationIssue[];
+  previewPass: boolean;
+  canvasPass: boolean;
+  mp4Pass: boolean;
+  parityPass: boolean;
+  blockingIssueCount: number;
+  warningCount: number;
+  generatedAt?: string;
+  capabilityMatrix?: RendererCapabilityMatrix;
+  mp4CertificationReason?: string;
 }
 
 export interface RenderFrameTelemetry {

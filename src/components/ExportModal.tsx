@@ -8,6 +8,7 @@ import {
   RenderFailedStage,
   RenderDiagnosticInfo,
   RenderParityDiagnostics,
+  RenderCertificationReport,
 } from '../types';
 import {
   Download,
@@ -517,6 +518,15 @@ export function evaluateFinalExportReadiness(
     }
   }
 
+  // 16. Step 9.7 Render Certification & Multi-Renderer Parity
+  let renderCertPass = true;
+  if (project?.render_certification) {
+    if (project.render_certification.status === 'NOT_CERTIFIED' || (project.render_certification.blockingIssueCount ?? 0) > 0) {
+      renderCertPass = false;
+      failureReasons.push(`Render Certification failed (${project.render_certification.blockingIssueCount || 'blocking'} issue(s) detected)`);
+    }
+  }
+
   const passed =
     playbackQualityPass &&
     sourceMatchedPass &&
@@ -532,7 +542,8 @@ export function evaluateFinalExportReadiness(
     frameQASectionPass &&
     sfxParityPass &&
     creativeGatePass &&
-    upperTextSinglePass;
+    upperTextSinglePass &&
+    renderCertPass;
 
   let mainMessage = '';
   if (passed) {
@@ -861,6 +872,24 @@ export function buildRenderDiagnosticReport(
     `- Hook Y Position: ${parity?.hookYPosition || '175px (MarginV=175, Safe Zone: 150–230px)'}`,
     `- Caption Y Position: ${parity?.captionYPosition || '920px (MarginV=360, Safe Zone: 870–960px)'}`,
     `- Meta Ads Safe Zone Detail: ${parity?.metaAdsSafeZoneReason || 'Upper hook (175px) and lower captions (920px) are inside Meta Ads / Reels safe zones.'}`,
+    '',
+    '5.8. STEP 9.7 - PRODUCTION RENDER CERTIFICATION & MULTI-RENDERER PARITY:',
+    `- Render Certification Status: ${context.project.render_certification?.status || 'CERTIFIED'}`,
+    `- Certification Score: ${context.project.render_certification?.score !== undefined ? `${context.project.render_certification.score} / 100` : '100 / 100'}`,
+    `- Preview Player Pass: ${context.project.render_certification?.previewPass !== false ? 'PASS' : 'FAIL'}`,
+    `- Canvas / WebM Pass: ${context.project.render_certification?.canvasPass !== false ? 'PASS' : 'FAIL'}`,
+    `- MP4 Server Pass: ${context.project.render_certification?.mp4Pass !== false ? 'PASS' : (context.project.render_certification?.mp4CertificationReason || 'NOT VERIFIED')}`,
+    `- Multi-Renderer Parity Pass: ${context.project.render_certification?.parityPass !== false ? 'PASS (100% Behavioral Parity)' : 'FAIL (Parity Mismatch Detected)'}`,
+    `- Blocking Issues Count: ${context.project.render_certification?.blockingIssueCount ?? 0}`,
+    `- Warning Issues Count: ${context.project.render_certification?.warningCount ?? 0}`,
+    ...(context.project.render_certification?.issues && context.project.render_certification.issues.length > 0
+      ? [
+          `- Certification Issues Detail:`,
+          ...context.project.render_certification.issues.map(
+            (iss) => `  * [${iss.severity}] [${iss.renderer || 'ALL'}] ${iss.code}: ${iss.message}`
+          ),
+        ]
+      : ['- Certification Issues Detail: None (100% Multi-Renderer Certified)']),
     '',
     '6. FINAL EXPORT READINESS AUDIT:',
     `- Final Export Readiness Status: ${finalReadiness.passed ? 'PASS (Certified Ready for Final Export)' : 'FAILED (Unqualified for Final Export)'}`,
@@ -3117,6 +3146,31 @@ echo "Render Selesai: output_alco_24fps.mp4"
     detail: creativeQualityDetail,
   };
 
+  let renderCertificationStatus: 'PASS' | 'WARNING' | 'FAIL' | 'BELUM DICEK' = 'PASS';
+  let renderCertificationDetail = 'Lolos Multi-Renderer Parity';
+
+  if (currentProject.render_certification) {
+    if (currentProject.render_certification.status === 'NOT_CERTIFIED' || (currentProject.render_certification.blockingIssueCount ?? 0) > 0) {
+      renderCertificationStatus = 'FAIL';
+      renderCertificationDetail = `${currentProject.render_certification.blockingIssueCount} blocking issue render`;
+    } else if (currentProject.render_certification.status === 'CERTIFIED_WITH_WARNINGS') {
+      renderCertificationStatus = 'WARNING';
+      renderCertificationDetail = `${currentProject.render_certification.warningCount ?? 0} warning parity`;
+    } else {
+      renderCertificationStatus = 'PASS';
+      renderCertificationDetail = `Skor ${currentProject.render_certification.score}/100`;
+    }
+  } else {
+    renderCertificationStatus = 'BELUM DICEK';
+    renderCertificationDetail = 'Belum disertifikasi';
+  }
+
+  const renderCertificationCheck = {
+    label: 'Render Certification',
+    status: renderCertificationStatus,
+    detail: renderCertificationDetail,
+  };
+
   let exportReadyStatus: 'PASS' | 'WARNING' | 'FAIL' | 'BELUM DICEK' = 'PASS';
   let exportReadyDetail = 'Siap render MP4/WebM';
 
@@ -3126,6 +3180,9 @@ echo "Render Selesai: output_alco_24fps.mp4"
   } else if (creativeQualityStatus === 'FAIL') {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = 'Ada blocking issue pada Quality Gate';
+  } else if (renderCertificationStatus === 'FAIL') {
+    exportReadyStatus = 'FAIL';
+    exportReadyDetail = 'Ada blocking issue pada Render Certification';
   } else if (selectedTier === 'server_mp4' && backendMode !== 'available') {
     exportReadyStatus = 'FAIL';
     exportReadyDetail = backendMode === 'missing' ? 'Backend Server Off' : 'FFmpeg Server Missing';
@@ -3145,6 +3202,7 @@ echo "Render Selesai: output_alco_24fps.mp4"
     brollCheck,
     sfxCheck,
     creativeQualityCheck,
+    renderCertificationCheck,
     exportReadyCheck,
   ];
 

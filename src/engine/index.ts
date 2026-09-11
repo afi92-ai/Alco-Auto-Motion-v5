@@ -20,6 +20,7 @@ import { mapContentTypeToFunnelStage, selectCaptionGrammar } from './funnelEngin
 import { generateVisualEvidence } from './evidenceEngine';
 import { validateCreativePerformance } from './creativeValidator';
 import { runCreativeQualityGate } from './creativeQualityGate';
+import { runRenderCertification } from './renderCertification';
 import { STYLE_PRESET_PROFILES, getStyleProfile } from './styleProfiles';
 import { analyzeTalkingHeadScene, analyzeProjectTalkingHeadDominance } from './talkingHeadDirector';
 import { analyzeSceneVisualCorrection, summarizeProjectVisualQuality } from './lightingDirector';
@@ -45,6 +46,7 @@ export * from './assetMatcher';
 export * from './sceneCompositionEngine';
 export * from './editingRhythmEngine';
 export * from './creativeQualityGate';
+export * from './renderCertification';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
   clean_creator: {
@@ -368,6 +370,10 @@ export function buildIntelligentEditPlan(
   // Recompute creative audit on the final validated scenes
   const finalAuditResult = validateCreativePerformance(partialProject);
   partialProject.creative_audit = finalAuditResult;
+
+  // 8. Step 9.7: Production Render Certification & Multi-Renderer Parity Layer
+  const certificationReport = runRenderCertification(partialProject);
+  partialProject.render_certification = certificationReport;
 
   return partialProject;
 }
