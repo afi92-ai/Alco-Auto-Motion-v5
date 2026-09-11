@@ -22,7 +22,7 @@ const execFileAsync = promisify(execFile);
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Temporary upload directory for direct streaming multipart form video uploads
