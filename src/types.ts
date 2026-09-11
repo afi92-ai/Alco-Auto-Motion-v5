@@ -313,6 +313,38 @@ export interface EditingRhythm {
 
 export type EditingIntensity = 'LOW' | 'MEDIUM' | 'HIGH';
 
+// Step 9.5B Central Meta Ads Editing Rhythm Plan contracts
+export type PaceLevel = 'FAST' | 'MEDIUM_FAST' | 'MEDIUM' | 'CONTROLLED' | 'STABLE';
+export type MotionBudget = 'HIGH' | 'MEDIUM' | 'LOW' | 'MINIMAL';
+export type SpeechDensityLevel = 'SPARSE' | 'NORMAL' | 'DENSE';
+export type ReadabilityPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+export type RefreshStrategy =
+  | 'NONE'
+  | 'CROP_SHIFT'
+  | 'SUBTLE_REFRAME'
+  | 'PUNCH_REFRESH'
+  | 'BROLL_REFRESH'
+  | 'EVIDENCE_HOLD';
+
+export interface EditingRhythmPlan {
+  paceLevel: PaceLevel;
+  targetVisualIntervalMs: number;
+  minimumReadableDurationMs: number;
+  motionBudget: MotionBudget;
+  noveltyIntervalMs: number;
+  preferredTransition: TransitionType;
+  transitionDurationMs: number;
+  allowMidSceneRefresh: boolean;
+  refreshStrategy: RefreshStrategy;
+  midSceneRefreshPointsSec?: number[];
+  preserveSpeechBoundary: boolean;
+  preserveCompositionFocus: boolean;
+  speechDensityLevel: SpeechDensityLevel;
+  readabilityPriority: ReadabilityPriority;
+  requiresVisualHold?: boolean;
+  reason: string;
+}
+
 export type AdRole =
   | 'hook'
   | 'problem'
@@ -438,6 +470,8 @@ export interface SceneEditPlan {
   asset_match?: AssetMatchResult;
   // Step 9.4B Scene Composition & Attention Hierarchy
   composition_profile?: any;
+  // Step 9.5B Central Meta Ads Editing Rhythm Plan
+  editing_rhythm_plan?: EditingRhythmPlan;
 }
 
 export interface StylePresetProfile {

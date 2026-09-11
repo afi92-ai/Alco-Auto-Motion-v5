@@ -24,6 +24,7 @@ import {
   calculateCaptionFontSize,
 } from './captionEngine';
 import { evaluateSceneComposition } from './sceneCompositionEngine';
+import { calculateEditingRhythmPlan } from './editingRhythmEngine';
 
 /**
   * Mapping B-Roll types by Ad Role (10-stage marketing funnel)
@@ -1485,6 +1486,16 @@ export function enrichSceneWithDecisionEngine(
     availableUserAssets: (scene as any).availableUserAssets || [],
   });
   baseScene.composition_profile = compositionProfile;
+
+  // Step 9.5B: Central Meta Ads Editing Rhythm Plan
+  const editingRhythmPlan = calculateEditingRhythmPlan({
+    scene: baseScene,
+    index,
+    totalScenes,
+    previousScene: allEnrichedScenesSoFar.slice(-1)[0],
+    compositionProfile,
+  });
+  baseScene.editing_rhythm_plan = editingRhythmPlan;
 
   // Run layering pass
   const layeringResult = determineSfxLayers(baseScene, index, allEnrichedScenesSoFar, totalScenes);

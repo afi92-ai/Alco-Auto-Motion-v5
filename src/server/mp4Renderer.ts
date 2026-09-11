@@ -205,8 +205,14 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
     return cachedBinaries;
   }
 
+  const isWin = process.platform === 'win32';
+  const ffmpegExeName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+  const ffprobeExeName = isWin ? 'ffprobe.exe' : 'ffprobe';
+
   const candidateFfmpeg = [
     process.env.FFMPEG_PATH,
+    path.join(process.cwd(), 'resources', 'ffmpeg', ffmpegExeName),
+    path.join(process.cwd(), 'resources', 'ffmpeg', 'ffmpeg.exe'),
     'ffmpeg',
     '/usr/bin/ffmpeg',
     '/usr/local/bin/ffmpeg',
@@ -216,6 +222,8 @@ export async function resolveFfmpegBinaries(forceRefresh = false): Promise<Ffmpe
 
   const candidateFfprobe = [
     process.env.FFPROBE_PATH,
+    path.join(process.cwd(), 'resources', 'ffmpeg', ffprobeExeName),
+    path.join(process.cwd(), 'resources', 'ffmpeg', 'ffprobe.exe'),
     'ffprobe',
     '/usr/bin/ffprobe',
     '/usr/local/bin/ffprobe',

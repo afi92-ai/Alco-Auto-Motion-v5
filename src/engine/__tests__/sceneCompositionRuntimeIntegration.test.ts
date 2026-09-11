@@ -32,7 +32,7 @@ function assert(condition: boolean, testName: string, detail?: string) {
 console.log('--- Test Suite 1: Proof Scene Attention Hierarchy Runtime ---');
 
 const proofScene: Partial<SceneEditPlan> = {
-  id: 'scene_proof',
+  id: 1,
   start: 4.0,
   end: 8.0,
   role: 'proof',
@@ -60,11 +60,10 @@ proofScene.composition_profile = evaluateSceneComposition(proofScene, {
   availableUserAssets: [
     {
       id: 'asset_proof',
-      title: 'Dashboard Penjualan',
-      type: 'SCREEN_PROOF',
-      assetUrl: 'https://example.com/proof.png',
-      visualIntent: 'evidence',
-      metricValue: '5.4x ROAS',
+      name: 'Dashboard Penjualan',
+      type: 'dashboard',
+      url: 'https://example.com/proof.png',
+      label: '5.4x ROAS',
     },
   ],
 });
@@ -113,7 +112,7 @@ assert(
 console.log('\n--- Test Suite 2: Hook Scene Focal Lock Runtime Integration ---');
 
 const hookScene: Partial<SceneEditPlan> = {
-  id: 'scene_hook',
+  id: 2,
   start: 0.0,
   end: 3.0,
   role: 'hook',
@@ -186,7 +185,7 @@ assert(
 console.log('\n--- Test Suite 3: CTA & Offer Scene Runtime Integration ---');
 
 const ctaScene: Partial<SceneEditPlan> = {
-  id: 'scene_cta',
+  id: 3,
   start: 12.0,
   end: 15.0,
   role: 'cta',
@@ -238,7 +237,7 @@ assert(
 console.log('\n--- Test Suite 4: Internal Layer Suppression Rules ---');
 
 const problemScene: Partial<SceneEditPlan> = {
-  id: 'scene_problem',
+  id: 4,
   start: 2.0,
   end: 5.0,
   role: 'problem',
