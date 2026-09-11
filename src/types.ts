@@ -345,6 +345,23 @@ export interface EditingRhythmPlan {
   reason: string;
 }
 
+// Step 9.5B.2 Shared Runtime Rhythm Directive contract
+export interface RuntimeRhythmDirective {
+  effectiveMotionScale: number;
+  effectiveCropXOffset: number;
+  effectiveCropYOffset: number;
+  motionMultiplier: number;
+  refreshActive: boolean;
+  refreshStage: number;
+  refreshStrategy: RefreshStrategy;
+  effectiveTransition: TransitionType;
+  effectiveTransitionDurationMs: number;
+  evidenceHoldActive: boolean;
+  suppressAggressiveMotion: boolean;
+  preserveCompositionFocus: boolean;
+  reason: string;
+}
+
 export type AdRole =
   | 'hook'
   | 'problem'

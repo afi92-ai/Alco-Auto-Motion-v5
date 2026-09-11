@@ -7,6 +7,11 @@ import {
   getEffectiveCaptionTreatment,
   isElementSuppressed,
 } from './sceneCompositionEngine';
+import {
+  getRuntimeRhythmDirective,
+  getRhythmAdjustedTransition,
+  isEvidenceHoldActive,
+} from './editingRhythmRuntime';
 
 export interface PreloadedAssets {
   brollImages?: Record<string, HTMLImageElement>;
@@ -106,8 +111,12 @@ export function getCameraTransform(scene: SceneEditPlan, currentTime: number) {
   const baseScale = isTH ? Math.max(1.14, thFraming.smart_reframe_scale) : Math.max(1.16, scene.motion_scale || 1.18);
   const crop = isTH ? thFraming.crop_shift_offset : (scene.editing_rhythm?.crop_offset || { x: 0, y: 0 });
 
+  // Step 9.5B.2 Central Runtime Rhythm Directive Integration
+  const directive = getRuntimeRhythmDirective(scene, currentTime, sceneElapsed);
+  const motionMult = directive.motionMultiplier;
+
   const cutImpactDuration = 0.18;
-  const cutImpactIntensity = 0.07;
+  const cutImpactIntensity = directive.suppressAggressiveMotion ? 0.015 : 0.07 * motionMult;
   let cutPop = 0;
   if (sceneElapsed < cutImpactDuration) {
     const popProgress = sceneElapsed / cutImpactDuration;
@@ -116,26 +125,64 @@ export function getCameraTransform(scene: SceneEditPlan, currentTime: number) {
 
   if (role === 'hook' || scene.editing_rhythm?.rhythm_preset === 'SPECIAL_HOOK_0_3S') {
     const isStage1 = sceneElapsed < 1.2;
-    const hookScale = (isStage1 ? (isTH ? 1.26 : 1.32) : (isTH ? 1.16 : 1.22)) + cutPop;
-    const cropX = isStage1 ? (isTH ? 1.5 : 3.5) : (isTH ? -1.0 : -2.0);
-    const cropY = isStage1 ? (isTH ? -2.8 : -3.0) : (isTH ? -1.8 : 1.5);
+    const baseHook = isStage1 ? (isTH ? 1.26 : 1.32) : (isTH ? 1.16 : 1.22);
+    const hookScale = 1.16 + (baseHook - 1.16) * motionMult + cutPop + directive.effectiveMotionScale;
+    const cropX = (isStage1 ? (isTH ? 1.5 : 3.5) : (isTH ? -1.0 : -2.0)) * motionMult + directive.effectiveCropXOffset;
+    const cropY = (isStage1 ? (isTH ? -2.8 : -3.0) : (isTH ? -1.8 : 1.5)) + directive.effectiveCropYOffset;
     return { scale: hookScale, x: cropX, y: cropY };
   }
 
+  let resScale = baseScale;
+  let resX = crop.x;
+  let resY = crop.y;
+
+  // Damp motion delta by motionMult (or 0.25 if suppressAggressiveMotion)
+  const motionDamp = directive.suppressAggressiveMotion ? 0.25 : motionMult;
+
   switch (motion) {
-    case 'punch_zoom':
-      return { scale: Math.max(1.20, baseScale) + cutPop, x: crop.x, y: crop.y };
-    case 'slow_zoom_in':
-      return { scale: 1.04 + (Math.max(1.20, baseScale) - 1.04) * progress + cutPop, x: crop.x, y: crop.y };
-    case 'slow_zoom_out':
-      return { scale: Math.max(1.20, baseScale) - (Math.max(1.20, baseScale) - 1.04) * progress + cutPop, x: crop.x, y: crop.y };
-    case 'pan_left':
-      return { scale: Math.max(1.14, baseScale) + cutPop, x: (isTH ? 1.5 - 3 * progress : 3 - 6 * progress) + crop.x, y: crop.y };
-    case 'pan_right':
-      return { scale: Math.max(1.14, baseScale) + cutPop, x: (isTH ? -1.5 + 3 * progress : -3 + 6 * progress) + crop.x, y: crop.y };
-    default:
-      return { scale: (isTH ? baseScale : 1.06 + Math.sin(progress * Math.PI) * 0.06) + cutPop, x: crop.x, y: crop.y };
+    case 'punch_zoom': {
+      const targetScale = Math.max(1.20, baseScale);
+      const punchDelta = (targetScale - baseScale) * motionDamp;
+      resScale = baseScale + punchDelta + cutPop;
+      break;
+    }
+    case 'slow_zoom_in': {
+      const targetScale = Math.max(1.20, baseScale);
+      const zoomDelta = (targetScale - 1.04) * motionDamp;
+      resScale = 1.04 + zoomDelta * progress + cutPop;
+      break;
+    }
+    case 'slow_zoom_out': {
+      const targetScale = Math.max(1.20, baseScale);
+      const zoomDelta = (targetScale - 1.04) * motionDamp;
+      resScale = targetScale - zoomDelta * progress + cutPop;
+      break;
+    }
+    case 'pan_left': {
+      resScale = Math.max(1.14, baseScale) + cutPop;
+      const panRange = isTH ? (1.5 - 3 * progress) : (3 - 6 * progress);
+      resX = panRange * motionDamp + crop.x;
+      break;
+    }
+    case 'pan_right': {
+      resScale = Math.max(1.14, baseScale) + cutPop;
+      const panRange = isTH ? (-1.5 + 3 * progress) : (-3 + 6 * progress);
+      resX = panRange * motionDamp + crop.x;
+      break;
+    }
+    default: {
+      const waveDelta = Math.sin(progress * Math.PI) * 0.06 * motionDamp;
+      resScale = (isTH ? baseScale : 1.06 + waveDelta) + cutPop;
+      break;
+    }
   }
+
+  // Apply mid-scene refresh offsets from runtime rhythm directive
+  resScale += directive.effectiveMotionScale;
+  resX += directive.effectiveCropXOffset;
+  resY += directive.effectiveCropYOffset;
+
+  return { scale: resScale, x: resX, y: resY };
 }
 
 /**
@@ -378,7 +425,7 @@ export function drawVisualEvidenceOverlay(
   currentTime?: number
 ) {
   if (!scene.visual_evidence) return;
-  if (!shouldRenderEvidenceLayer(scene, currentTime)) return; // Step 9.4B.2: Hook focal lock secondary card delay
+  if (!shouldRenderEvidenceLayer(scene, currentTime) && !isEvidenceHoldActive(scene, currentTime || 0)) return; // Step 9.4B.2 & 9.5B.2: Hook focal lock delay & evidence hold
   const ev = scene.visual_evidence;
   const evImg = preloadedImages?.[scene.id];
 
@@ -626,8 +673,10 @@ export function renderFrameToCanvas(
 
   // 3. Scene Transition Flash if applicable
   const sceneElapsed = currentTime - (scene?.start || 0);
-  if (scene?.transition === 'flash' && sceneElapsed < 0.18) {
-    const flashAlpha = (1 - sceneElapsed / 0.18) * 0.45;
+  const { transition: effTrans, durationMs: transDur } = getRhythmAdjustedTransition(scene);
+  const flashWindowSec = (transDur || 180) / 1000;
+  if (effTrans === 'flash' && sceneElapsed < flashWindowSec) {
+    const flashAlpha = (1 - sceneElapsed / flashWindowSec) * 0.45;
     ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
     ctx.fillRect(0, 0, 720, 1280);
   }

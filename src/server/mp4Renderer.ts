@@ -23,6 +23,12 @@ import {
   buildCaptionChunks,
   determineCaptionDisplayMode,
 } from '../engine/captionEngine';
+import {
+  getRuntimeRhythmDirective,
+  getRhythmAdjustedTransition,
+  getRhythmFilterExpression,
+  isEvidenceHoldActive,
+} from '../engine/editingRhythmRuntime';
 
 const execFileAsync = promisify(execFile);
 
@@ -1221,7 +1227,7 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
 
       // Step 9.4B.2: Check generic B-roll suppression from composition profile
       const isGenericBrollSuppressed = sc.composition_profile?.suppressedElements?.includes('GENERIC_BROLL') && !sc.visual_evidence;
-      const allowsBrollOverlay = ['BROLL', 'PRODUCT_DEMO', 'SCREENSHOT', 'GRAPH', 'SPLIT_SCREEN'].includes(decision) && !isGenericBrollSuppressed;
+      const allowsBrollOverlay = (['BROLL', 'PRODUCT_DEMO', 'SCREENSHOT', 'GRAPH', 'SPLIT_SCREEN'].includes(decision) || (Boolean(sc.visual_evidence) && isEvidenceHoldActive(sc, sc.start || 0))) && !isGenericBrollSuppressed;
 
       if (brollUrl && allowsBrollOverlay) {
         brollPlannedCount++;
@@ -1545,6 +1551,12 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
         // Resolve shared motion profile from TALKING_HEAD_MOTION_CONFIG for exact parity
         const motionProfile = resolveTalkingHeadMotionProfile(sc.role, sc.adRole, isTH, idx);
 
+        // Step 9.5B.2 Runtime Rhythm Plan Integration for MP4 Render
+        const rhythmExpr = getRhythmFilterExpression(sc, segDuration);
+        const { transition: effTrans } = getRhythmAdjustedTransition(sc);
+        const motionMult = rhythmExpr.motionMultiplier;
+        const suppressMotion = rhythmExpr.suppressAggressiveMotion;
+
         let zExpr = '1.14';
         let xExpr = '0';
         const yOffsetPx = Math.round(motionProfile.cropY * 12.5); // e.g. -4.0% -> -50px, -3.5% -> -44px
@@ -1556,34 +1568,53 @@ export async function renderProjectMp4(req: ServerRenderRequest): Promise<Server
           // Hook 0-3s: Rapid punch zoom 0..0.35s from scaleStart (1.18) to scaleEnd (1.28), then smooth settle to settleScale (1.20)
           const settleDur = Math.max(0.5, segDuration - 0.35).toFixed(2);
           const settleScale = motionProfile.settleScale || 1.20;
-          const popDelta = (motionProfile.scaleEnd - motionProfile.scaleStart).toFixed(3);
-          const settleDelta = (motionProfile.scaleEnd - settleScale).toFixed(3);
+          const popDelta = ((motionProfile.scaleEnd - motionProfile.scaleStart) * motionMult).toFixed(3);
+          const settleDelta = ((motionProfile.scaleEnd - settleScale) * motionMult).toFixed(3);
 
           zExpr = `if(lte(t,0.35), ${motionProfile.scaleStart.toFixed(2)}+${popDelta}*(t/0.35), ${motionProfile.scaleEnd.toFixed(2)}-${settleDelta}*min(1.0,(t-0.35)/${settleDur}))`;
-          const cropXDelta = (motionProfile.cropXEnd - motionProfile.cropXStart).toFixed(2);
+          const cropXDelta = ((motionProfile.cropXEnd - motionProfile.cropXStart) * motionMult).toFixed(2);
           xExpr = `${motionProfile.cropXStart.toFixed(2)}+${cropXDelta}*(t/${durStr})`;
         } else {
-          // Explanation / Solution / Proof / CTA / Default: smooth progressive zoom & subtle pan
-          const scaleDelta = (motionProfile.scaleEnd - motionProfile.scaleStart).toFixed(3);
-          zExpr = `${motionProfile.scaleStart.toFixed(2)}+${scaleDelta}*(t/${durStr})`;
+          // Explanation / Solution / Proof / Demo / Offer / CTA / Default: smooth progressive zoom & subtle pan
+          const rawScaleDelta = (motionProfile.scaleEnd - motionProfile.scaleStart) * motionMult;
+          const rawCropXDelta = (motionProfile.cropXEnd - motionProfile.cropXStart) * motionMult;
 
-          if (Math.abs(motionProfile.cropXEnd - motionProfile.cropXStart) > 0.01) {
-            const cropXDelta = (motionProfile.cropXEnd - motionProfile.cropXStart).toFixed(2);
-            xExpr = `${motionProfile.cropXStart.toFixed(2)}+${cropXDelta}*(t/${durStr})`;
+          // Suppress aggressive motion delta when requested (e.g. proof, demo, cta)
+          const effectiveScaleDelta = (suppressMotion ? rawScaleDelta * 0.25 : rawScaleDelta).toFixed(3);
+          const effectiveCropXDelta = (suppressMotion ? rawCropXDelta * 0.25 : rawCropXDelta).toFixed(2);
+
+          zExpr = `${motionProfile.scaleStart.toFixed(2)}+${effectiveScaleDelta}*(t/${durStr})`;
+
+          if (Math.abs(Number(effectiveCropXDelta)) > 0.01) {
+            xExpr = `${motionProfile.cropXStart.toFixed(2)}+${effectiveCropXDelta}*(t/${durStr})`;
           } else {
             xExpr = `${motionProfile.cropXStart.toFixed(2)}`;
           }
+        }
+
+        // Incorporate mid-scene refresh expressions if planned
+        if (rhythmExpr.zExprReframe !== '0') {
+          zExpr = `(${zExpr})+(${rhythmExpr.zExprReframe})`;
+        }
+        if (rhythmExpr.xExprReframe !== '0') {
+          xExpr = `(${xExpr})+(${rhythmExpr.xExprReframe})`;
+        }
+        if (rhythmExpr.yExprReframe !== '0') {
+          yExpr = `(${yExpr})+(${rhythmExpr.yExprReframe})*12.5`;
         }
 
         // Clamp talking-head zoom to maxScale
         zExpr = `min(${motionProfile.maxScale.toFixed(2)}, max(${motionProfile.minScale.toFixed(2)}, ${zExpr}))`;
 
         let eqFilter = '';
+        const flashExpr = effTrans === 'flash' ? `+if(lt(t,0.18),0.35*(1-t/0.18),0)` : '';
         if (sc.visual_correction) {
           const b = ((sc.visual_correction.brightness || 100) - 100) / 100;
           const c = (sc.visual_correction.contrast || 100) / 100;
           const s = (sc.visual_correction.saturate || 100) / 100;
-          eqFilter = `,eq=brightness=${b.toFixed(3)}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`;
+          eqFilter = `,eq=brightness=${b.toFixed(3)}${flashExpr}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`;
+        } else if (effTrans === 'flash') {
+          eqFilter = `,eq=brightness=${flashExpr.slice(1)}`;
         }
 
         // Apply robust two-stage dynamic crop & scale:

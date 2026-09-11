@@ -24,6 +24,11 @@ import { getFaceSafeOverlayPlacement } from '../engine/talkingHeadDirector';
 import { TALKING_HEAD_MOTION_CONFIG, resolveTalkingHeadMotionProfile, clampScale } from '../config/talkingHeadMotionConfig';
 import { getStyleProfile } from '../engine/styleProfiles';
 import { selectSfxForScene, selectBestSfxLayerForScene } from '../engine/decisionEngine';
+import {
+  getRuntimeRhythmDirective,
+  getRhythmAdjustedTransition,
+  isEvidenceHoldActive,
+} from '../engine/editingRhythmRuntime';
 
 interface PreviewPlayerProps {
   videoUrl: string;
@@ -114,9 +119,13 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
       activeSceneIndex
     );
 
+    // Step 9.5B.2 Central Runtime Rhythm Directive Integration
+    const rhythmDirective = getRuntimeRhythmDirective(currentScene, currentTime, sceneElapsed);
+    const motionMult = rhythmDirective.motionMultiplier;
+
     // Fast Snap Transition Cut Pop based on motion profile transitionMs
     const cutImpactDuration = Math.min(0.25, (motionProfile.transitionMs || 180) / 1000);
-    const cutImpactIntensity = 0.035;
+    const cutImpactIntensity = rhythmDirective.suppressAggressiveMotion ? 0.008 : 0.035 * motionMult;
     let cutPop = 0;
     if (sceneElapsed < cutImpactDuration) {
       const popProgress = sceneElapsed / cutImpactDuration;
@@ -125,34 +134,56 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
 
     let calculatedScale = motionProfile.scaleStart;
     let calculatedCropX = motionProfile.cropXStart;
-    const calculatedCropY = motionProfile.cropY;
+    const baseCropY = motionProfile.cropY;
 
     if (motionProfile.profileKey === 'hook') {
       // Hook 0-3s: Rapid punch zoom 0..0.35s from scaleStart (1.18) to scaleEnd (1.28), then smooth settle to settleScale (1.20)
       const settleScale = motionProfile.settleScale || 1.20;
+      const popDelta = (motionProfile.scaleEnd - motionProfile.scaleStart) * motionMult;
+      const settleDelta = (motionProfile.scaleEnd - settleScale) * motionMult;
+
       if (sceneElapsed < 0.35) {
-        calculatedScale = motionProfile.scaleStart + (motionProfile.scaleEnd - motionProfile.scaleStart) * (sceneElapsed / 0.35);
+        calculatedScale = motionProfile.scaleStart + popDelta * (sceneElapsed / 0.35);
       } else {
         const settleProgress = Math.min(1.0, (sceneElapsed - 0.35) / Math.max(0.5, sceneDur - 0.35));
-        calculatedScale = motionProfile.scaleEnd - (motionProfile.scaleEnd - settleScale) * settleProgress;
+        calculatedScale = (motionProfile.scaleStart + popDelta) - settleDelta * settleProgress;
       }
-      calculatedCropX = motionProfile.cropXStart + (motionProfile.cropXEnd - motionProfile.cropXStart) * progress;
+      calculatedCropX = motionProfile.cropXStart + (motionProfile.cropXEnd - motionProfile.cropXStart) * motionMult * progress;
+
+      // Apply mid-scene rhythm refresh offsets
+      calculatedScale += rhythmDirective.effectiveMotionScale;
+      calculatedCropX += rhythmDirective.effectiveCropXOffset;
+      const calculatedCropY = baseCropY + rhythmDirective.effectiveCropYOffset;
 
       const finalScale = clampScale(calculatedScale + cutPop);
       return {
         transform: `scale(${finalScale.toFixed(3)}) translateX(${calculatedCropX.toFixed(2)}%) translateY(${calculatedCropY.toFixed(2)}%)`,
-        transition: sceneElapsed < 0.35 ? 'transform 0.10s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : 'transform 0.25s ease-out',
+        transition: sceneElapsed < 0.35 ? 'transform 0.10s cubic-bezier(0.175, 0.885, 0.32, 1.275)' : (rhythmDirective.refreshActive ? 'transform 0.35s ease-out' : 'transform 0.25s ease-out'),
       };
     }
 
-    // Explanation / Solution / Proof / CTA / Default: Smooth dynamic progression
-    calculatedScale = motionProfile.scaleStart + (motionProfile.scaleEnd - motionProfile.scaleStart) * progress;
-    calculatedCropX = motionProfile.cropXStart + (motionProfile.cropXEnd - motionProfile.cropXStart) * progress;
+    // Explanation / Solution / Proof / Demo / Offer / CTA / Default: Smooth dynamic progression
+    const rawScaleDelta = (motionProfile.scaleEnd - motionProfile.scaleStart) * motionMult;
+    const rawCropXDelta = (motionProfile.cropXEnd - motionProfile.cropXStart) * motionMult;
+
+    // Suppress aggressive motion delta when requested (e.g. proof, demo, cta)
+    const effectiveScaleDelta = rhythmDirective.suppressAggressiveMotion ? rawScaleDelta * 0.25 : rawScaleDelta;
+    const effectiveCropXDelta = rhythmDirective.suppressAggressiveMotion ? rawCropXDelta * 0.25 : rawCropXDelta;
+
+    calculatedScale = motionProfile.scaleStart + effectiveScaleDelta * progress;
+    calculatedCropX = motionProfile.cropXStart + effectiveCropXDelta * progress;
+
+    // Apply mid-scene rhythm refresh offsets
+    calculatedScale += rhythmDirective.effectiveMotionScale;
+    calculatedCropX += rhythmDirective.effectiveCropXOffset;
+    const calculatedCropY = baseCropY + rhythmDirective.effectiveCropYOffset;
 
     const finalScale = clampScale(calculatedScale + cutPop);
+    const cssTransition = rhythmDirective.refreshActive ? 'transform 0.4s ease-out' : 'none';
+
     return {
       transform: `scale(${finalScale.toFixed(3)}) translateX(${calculatedCropX.toFixed(2)}%) translateY(${calculatedCropY.toFixed(2)}%)`,
-      transition: 'none',
+      transition: cssTransition,
     };
   };
 
@@ -364,7 +395,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
     // Render Visual Evidence Overlay Cards (Sleek, Compact & Non-Intrusive)
     const renderVisualEvidenceOverlay = () => {
       if (viewMode === 'raw' || !currentScene?.visual_evidence || !currentScene.visual_evidence.userAssetUrl) return null;
-      if (!shouldRenderEvidenceLayer(currentScene, currentTime)) return null;
+      if (!shouldRenderEvidenceLayer(currentScene, currentTime) && !isEvidenceHoldActive(currentScene, currentTime)) return null;
       const ev = currentScene.visual_evidence;
       const assetUrl = ev.userAssetUrl;
 
