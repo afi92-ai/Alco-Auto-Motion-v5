@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Sun, Moon, Monitor, Download, ChevronDown, Sparkles } from 'lucide-react';
+import { Menu, Sun, Moon, Monitor, Download, ChevronDown, Sparkles, ShieldCheck, Key } from 'lucide-react';
 import { ApiKeyControl } from './ApiKeyControl';
 import { ThemeMode } from '../hooks/useTheme';
+import { AlcoLicenseStatus } from '../config/alcoAppConfig';
 
 interface HeaderProps {
   onToggleMobileSidebar: () => void;
@@ -14,6 +15,8 @@ interface HeaderProps {
   theme?: ThemeMode;
   resolvedTheme?: 'light' | 'dark';
   onThemeChange?: (theme: ThemeMode) => void;
+  licenseStatus?: AlcoLicenseStatus | null;
+  onOpenLicenseModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
   isProcessing,
   theme = 'dark',
   onThemeChange,
+  licenseStatus,
+  onOpenLicenseModal,
 }) => {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const themeRef = useRef<HTMLDivElement>(null);
@@ -81,6 +86,28 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* API Key Control */}
         <ApiKeyControl onOpenModal={onOpenApiKeyModal} />
+
+        {/* ALCO License Center Quick Trigger */}
+        {onOpenLicenseModal && (
+          <button
+            onClick={onOpenLicenseModal}
+            className={`alco-control flex items-center gap-1.5 px-2.5 h-8 text-xs font-semibold cursor-pointer border transition-colors ${
+              licenseStatus?.active
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15'
+                : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/15'
+            }`}
+            title="ALCO Ecosystem License Center"
+          >
+            {licenseStatus?.active ? (
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Key className="w-3.5 h-3.5 text-blue-400" />
+            )}
+            <span className="hidden sm:inline">
+              {licenseStatus?.active ? licenseStatus.plan?.toUpperCase() : 'Aktivasi'}
+            </span>
+          </button>
+        )}
 
         {/* Theme Selector Popover */}
         <div className="relative" ref={themeRef}>

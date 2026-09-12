@@ -11,6 +11,20 @@ import {
 } from './src/engine/index.ts';
 import { enrichSceneWithDecisionEngine } from './src/engine/decisionEngine.ts';
 import { renderProjectMp4, getRenderedFilePath, resolveFfmpegBinaries } from './src/server/mp4Renderer.ts';
+import {
+  ALCO_APP_ID,
+  ALCO_APP_NAME,
+  ALCO_APP_VERSION,
+  ALCO_PRODUCT_NAME,
+} from './src/config/alcoAppConfig.ts';
+import { getAlcoDeviceId } from './src/server/alcoDevice.ts';
+import {
+  auditAndGetLicenseStatus,
+  generateRequestCodeV2,
+  verifyLicenseCode,
+  savePersistentLicense,
+  clearPersistentLicense,
+} from './src/server/alcoLicense.ts';
 import fs from 'fs';
 import os from 'os';
 import multer from 'multer';
@@ -293,6 +307,96 @@ async function callGeminiWithFallback(
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ==========================================
+// ALCO APP STANDARD v2.2 - Official Ecosystem Endpoints
+// ==========================================
+
+// 1. ALCO Hub Application Discovery & Status (Section 6)
+app.get('/api/alco/info', (req, res) => {
+  const licenseStatus = auditAndGetLicenseStatus();
+  res.json({
+    appId: ALCO_APP_ID,
+    name: ALCO_APP_NAME,
+    version: ALCO_APP_VERSION,
+    productName: ALCO_PRODUCT_NAME,
+    status: 'installed',
+    runtime: 'electron-compatible',
+    deviceId: getAlcoDeviceId(),
+    licenseStatus: licenseStatus.active ? 'active' : 'unactivated',
+    plan: licenseStatus.plan || null,
+    licenseType: licenseStatus.licenseType || null,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// 2. License Status & Device ID (Section 15 & 19)
+app.get('/api/alco/license/status', (req, res) => {
+  const status = auditAndGetLicenseStatus();
+  res.json(status);
+});
+
+// 3. Generate Request Code v2 (Section 10)
+app.post('/api/alco/license/request-code', (req, res) => {
+  const { name, email, notes } = req.body || {};
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ success: false, error: 'Nama pemohon wajib diisi' });
+  }
+  if (!email || typeof email !== 'string' || !email.trim()) {
+    return res.status(400).json({ success: false, error: 'Email pemohon wajib diisi' });
+  }
+
+  try {
+    const result = generateRequestCodeV2({ name, email, notes });
+    res.json({
+      success: true,
+      requestCode: result.requestCode,
+      payload: result.payload,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: msg || 'Gagal membuat Request Code' });
+  }
+});
+
+// 4. Activate License Code (Section 12, 14, 15, 19)
+app.post('/api/alco/license/activate', (req, res) => {
+  const { licenseCode } = req.body || {};
+  if (!licenseCode || typeof licenseCode !== 'string') {
+    return res.status(400).json({ success: false, error: 'Kode lisensi tidak boleh kosong' });
+  }
+
+  const currentDeviceId = getAlcoDeviceId();
+  const verification = verifyLicenseCode(licenseCode.trim(), currentDeviceId);
+
+  if (!verification.valid || !verification.payload) {
+    return res.status(400).json({
+      success: false,
+      error: verification.error || 'Verifikasi lisensi gagal. Periksa format atau otoritas digital signature.',
+    });
+  }
+
+  // Persist verified license
+  savePersistentLicense(licenseCode.trim(), verification.payload);
+  const updatedStatus = auditAndGetLicenseStatus();
+
+  res.json({
+    success: true,
+    message: 'Lisensi ALCO berhasil diaktivasi secara permanen.',
+    status: updatedStatus,
+  });
+});
+
+// 5. Deactivate License (Section 19)
+app.post('/api/alco/license/deactivate', (req, res) => {
+  clearPersistentLicense();
+  const updatedStatus = auditAndGetLicenseStatus();
+  res.json({
+    success: true,
+    message: 'Lisensi telah dinonaktifkan.',
+    status: updatedStatus,
+  });
 });
 
 // Validate API Key endpoint for user testing in settings modal

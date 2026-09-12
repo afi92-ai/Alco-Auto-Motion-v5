@@ -1,6 +1,6 @@
 {
-  "name": "Alco Auto Motion v4",
-  "description": "AI-powered video editing director & auto-motion testing tool that analyzes talking-head videos, generates intelligent scene pacing, motion zooms, dynamic captions, and B-roll overlays.",
+  "name": "ALCO Auto Motion",
+  "description": "AI-powered video editing director & auto-motion engine that analyzes talking-head videos, generates intelligent scene pacing, motion zooms, dynamic captions, and B-roll overlays.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

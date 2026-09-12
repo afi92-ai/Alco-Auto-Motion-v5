@@ -8,13 +8,21 @@ import { ExportModal } from './components/ExportModal';
 import { AiProcessingModal } from './components/AiProcessingModal';
 import { ApiKeyModal } from './components/ApiKeyModal';
 import { AiProposalModal } from './components/AiProposalModal';
+import { AlcoLicenseModal } from './components/AlcoLicenseModal';
 import { ContentType, AlcoEditingProject, SampleVideoOption, UserProofAsset } from './types';
 import { SAMPLE_VIDEOS } from './data/sampleVideos';
 import { useAiWorkflow } from './hooks/useAiWorkflow';
 import { useTheme } from './hooks/useTheme';
+import { useAlcoLicense } from './hooks/useAlcoLicense';
 
 export default function App() {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const {
+    licenseStatus,
+    isLicenseModalOpen,
+    setIsLicenseModalOpen,
+    refreshStatus: refreshLicenseStatus,
+  } = useAlcoLicense();
   const [activeTab, setActiveTab] = useState<'input' | 'analysis' | 'edit_preview'>('input');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [contentType, setContentType] = useState<ContentType>('education');
@@ -187,6 +195,8 @@ export default function App() {
         theme={theme}
         resolvedTheme={resolvedTheme}
         onThemeChange={setTheme}
+        licenseStatus={licenseStatus}
+        onOpenLicenseModal={() => setIsLicenseModalOpen(true)}
       />
 
       {/* Main Workspace Body with Sidebar Rail */}
@@ -201,6 +211,8 @@ export default function App() {
           onOpenExportModal={() => setIsExportModalOpen(true)}
           isMobileOpen={isMobileSidebarOpen}
           onMobileClose={() => setIsMobileSidebarOpen(false)}
+          licenseStatus={licenseStatus}
+          onOpenLicenseModal={() => setIsLicenseModalOpen(true)}
         />
 
         {/* Main Workspace Content */}
@@ -297,6 +309,14 @@ export default function App() {
           onUpdateProject={setProject}
         />
       )}
+
+      {/* Official ALCO App Standard v2.2 License Modal */}
+      <AlcoLicenseModal
+        isOpen={isLicenseModalOpen}
+        onClose={() => setIsLicenseModalOpen(false)}
+        licenseStatus={licenseStatus}
+        onRefreshStatus={refreshLicenseStatus}
+      />
     </div>
   );
 }

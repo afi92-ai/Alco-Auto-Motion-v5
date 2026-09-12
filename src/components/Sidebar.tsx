@@ -10,7 +10,10 @@ import {
   PanelLeft,
   X,
   Sparkles,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
+import { AlcoLicenseStatus } from '../config/alcoAppConfig';
 
 interface SidebarProps {
   activeTab: 'input' | 'analysis' | 'edit_preview';
@@ -21,6 +24,8 @@ interface SidebarProps {
   onOpenExportModal?: () => void;
   isMobileOpen: boolean;
   onMobileClose: () => void;
+  licenseStatus?: AlcoLicenseStatus | null;
+  onOpenLicenseModal?: () => void;
 }
 
 const STORAGE_KEY = 'alco_sidebar_collapsed';
@@ -34,6 +39,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenExportModal,
   isMobileOpen,
   onMobileClose,
+  licenseStatus,
+  onOpenLicenseModal,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try {
@@ -213,6 +220,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Key className="w-4 h-4 shrink-0 text-amber-500" />
           {!isCollapsed && <span className="truncate">Gemini API Key</span>}
         </button>
+
+        {/* ALCO License Center Button */}
+        {onOpenLicenseModal && (
+          <button
+            onClick={() => {
+              onOpenLicenseModal();
+              onMobileClose();
+            }}
+            title={isCollapsed ? (licenseStatus?.active ? `ALCO License: ${licenseStatus.plan?.toUpperCase()}` : 'ALCO License: Belum Aktif') : undefined}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              licenseStatus?.active
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15'
+                : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/15'
+            }`}
+          >
+            {licenseStatus?.active ? (
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400" />
+            )}
+            {!isCollapsed && (
+              <div className="flex items-center justify-between w-full min-w-0">
+                <span className="truncate">
+                  {licenseStatus?.active ? `Lisensi: ${licenseStatus.plan?.toUpperCase()}` : 'Aktivasi Lisensi'}
+                </span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
+                  licenseStatus?.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-blue-500/20 text-blue-300'
+                }`}>
+                  {licenseStatus?.active ? 'OK' : 'STD v2.2'}
+                </span>
+              </div>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );
