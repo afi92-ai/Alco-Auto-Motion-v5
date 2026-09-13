@@ -28,6 +28,8 @@ import { analyzeSceneVisualCorrection, summarizeProjectVisualQuality } from './l
 import { enrichSceneWithDecisionEngine } from './decisionEngine';
 import { recordAssetUsage } from './assetMatcher';
 import { directVisualEvidence } from './visualEvidenceDirector';
+import { resolveVisualEvidence } from '../visualTreatments/resolver';
+import { routeVisualTreatment } from '../visualTreatments/router';
 
 export * from './scoringEngine';
 export * from './captionEngine';
@@ -50,6 +52,7 @@ export * from './editingRhythmEngine';
 export * from './creativeQualityGate';
 export * from './visualEvidenceDirector';
 export * from './renderCertification';
+export * from '../visualTreatments';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
   clean_creator: {
@@ -209,6 +212,34 @@ export function buildIntelligentEditPlan(
       contentType,
     });
 
+    // 1.6 Visual Evidence Resolver (ALCO Auto Motion V5)
+    const visualEvidenceResolution = resolveVisualEvidence({
+      transcript: seg.text,
+      role,
+      adRole: ((analysis[i] as any)?.ad_role as AdRole) || (role as unknown as AdRole),
+      directive: visualEvidenceDirective,
+      userAssets,
+      history: assetUsageHistory,
+      sceneIndex: i,
+    });
+
+    // 1.7 Visual Treatment Router & Library (ALCO Auto Motion V5)
+    const visualTreatmentPlan = routeVisualTreatment({
+      role,
+      adRole: ((analysis[i] as any)?.ad_role as AdRole) || (role as unknown as AdRole),
+      visualPurpose: visualEvidenceDirective.visualPurpose,
+      preferredVisual: visualEvidenceDirective.preferredVisual,
+      directive: visualEvidenceDirective,
+      resolution: visualEvidenceResolution,
+      emphasisTarget: visualEvidenceDirective.emphasisTarget,
+      motionIntent: visualEvidenceDirective.motionIntent,
+      transcript: seg.text,
+      duration: segDur,
+      availableUserAssets: userAssets || [],
+      sceneIndex: i,
+      totalScenes: segments.length,
+    });
+
     // 2. Decide Context-Aware Motion & Camera Dynamics
     const nextRole = analysis[i + 1]?.content_role;
     const previousMotionScale = scenes[i - 1]?.motion_scale;
@@ -337,6 +368,8 @@ export function buildIntelligentEditPlan(
       visual_correction: visualCorrection,
       asset_match: brollDecision.matchResult,
       visual_evidence_directive: visualEvidenceDirective,
+      visual_evidence_resolution: visualEvidenceResolution,
+      visual_treatment: visualTreatmentPlan,
     };
 
     const enrichedScene = enrichSceneWithDecisionEngine(rawScene, i, segments.length, !!(userAssets && userAssets.length > 0), scenes);

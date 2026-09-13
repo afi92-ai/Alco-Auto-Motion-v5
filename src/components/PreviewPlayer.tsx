@@ -30,6 +30,7 @@ import {
   isEvidenceHoldActive,
   resolveEvidenceSceneForTime,
 } from '../engine/editingRhythmRuntime';
+import { VisualTreatmentOverlay } from '../visualTreatments';
 
 interface PreviewPlayerProps {
   videoUrl: string;
@@ -1105,6 +1106,12 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
               {renderUpperHookHeadline()}
               {renderSafeInternalVisualLayer()}
               {renderVisualEvidenceOverlay()}
+              {viewMode !== 'raw' && currentScene?.visual_treatment && (
+                <VisualTreatmentOverlay
+                  plan={currentScene.visual_treatment}
+                  currentTimeInScene={Math.max(0, currentTime - (currentScene?.start || 0))}
+                />
+              )}
               {renderActiveCaptions()}
             </div>
           </div>
@@ -1173,6 +1180,12 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
             {renderUpperHookHeadline()}
             {renderSafeInternalVisualLayer()}
             {renderVisualEvidenceOverlay()}
+            {viewMode !== 'raw' && currentScene?.visual_treatment && (
+              <VisualTreatmentOverlay
+                plan={currentScene.visual_treatment}
+                currentTimeInScene={Math.max(0, currentTime - (currentScene?.start || 0))}
+              />
+            )}
             {renderActiveCaptions()}
 
             {/* Center Play/Pause Overlay */}

@@ -30,6 +30,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Layers,
 } from 'lucide-react';
 
 interface SceneInspectorProps {
@@ -611,6 +612,45 @@ export const SceneInspector: React.FC<SceneInspectorProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* ALCO Visual Treatment & Evidence Resolution (V5) */}
+            {scene.visual_treatment && (
+              <div className="bg-[var(--card)] rounded-xl border border-indigo-500/30 p-3 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-xs font-bold text-[var(--fg-app)] uppercase tracking-wider">
+                      Visual Treatment:
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 uppercase">
+                    {scene.visual_treatment.family.replace(/_/g, ' ')}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-[var(--secondary)]/60 border border-[var(--border)] space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-[var(--muted-foreground)]">Template:</span>
+                    <span className="font-mono font-bold text-amber-400 text-[11px]">
+                      {scene.visual_treatment.template}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-[var(--muted-foreground)]">Evidence:</span>
+                    <span className={`font-mono text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                      scene.visual_treatment.evidenceResolved
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-cyan-500/20 text-cyan-400'
+                    }`}>
+                      {scene.visual_treatment.evidenceResolved ? 'Authentic Asset' : 'Native Motion Graphic'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--muted-foreground)] italic pt-1 border-t border-[var(--border)] leading-relaxed">
+                    "{scene.visual_treatment.rationale}"
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* B-Roll Format & Type */}
             <div className="space-y-2 pt-2 border-t border-[var(--border)]">

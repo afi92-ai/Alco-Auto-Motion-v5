@@ -548,6 +548,10 @@ export interface SceneEditPlan {
   editing_rhythm_plan?: EditingRhythmPlan;
   // Visual Evidence Director
   visual_evidence_directive?: VisualEvidenceDirective;
+  // Visual Evidence Resolver
+  visual_evidence_resolution?: any;
+  // Visual Treatment Router & Library
+  visual_treatment?: any;
 }
 
 export interface StylePresetProfile {

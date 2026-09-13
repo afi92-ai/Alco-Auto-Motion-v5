@@ -13,6 +13,7 @@ import {
   isEvidenceHoldActive,
   resolveEvidenceSceneForTime,
 } from './editingRhythmRuntime';
+import { drawVisualTreatmentOnCanvas } from '../visualTreatments/render/canvasRenderer';
 
 export interface PreloadedAssets {
   brollImages?: Record<string, HTMLImageElement>;
@@ -698,6 +699,19 @@ export function renderFrameToCanvas(
       isSafeMode,
       currentTime,
       evidenceRes.isCarriedOver
+    );
+  }
+
+  // 5.5 Draw Visual Treatment Overlay (ALCO Auto Motion V5 Visual Treatment Library)
+  if (scene?.visual_treatment) {
+    drawVisualTreatmentOnCanvas(
+      ctx,
+      scene.visual_treatment,
+      sceneElapsed,
+      preloadedAssets?.evidenceImages,
+      isSafeMode,
+      720,
+      1280
     );
   }
 
