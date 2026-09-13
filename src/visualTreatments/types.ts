@@ -343,6 +343,7 @@ export interface VisualTreatmentPlan {
   evidenceResolved: boolean;
   requiresHold: boolean;
   placement: 'CENTER' | 'UPPER_THIRD' | 'LOWER_THIRD' | 'FULL_SCREEN';
+  variant?: VisualVariant;
 }
 
 export interface RouteTreatmentContext {

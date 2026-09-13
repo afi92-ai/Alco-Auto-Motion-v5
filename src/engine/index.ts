@@ -30,6 +30,7 @@ import { recordAssetUsage } from './assetMatcher';
 import { directVisualEvidence } from './visualEvidenceDirector';
 import { resolveVisualEvidence } from '../visualTreatments/resolver';
 import { routeVisualTreatment } from '../visualTreatments/router';
+import { TreatmentTemplateType, TreatmentFamily } from '../visualTreatments/types';
 
 export * from './scoringEngine';
 export * from './captionEngine';
@@ -174,6 +175,8 @@ export function buildIntelligentEditPlan(
   let previousMotion: any = undefined;
   let previousFatigue = 20;
   let assetUsageHistory: AssetUsageHistory = {};
+  const recentTreatments: TreatmentTemplateType[] = [];
+  const recentFamilies: TreatmentFamily[] = [];
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -238,7 +241,13 @@ export function buildIntelligentEditPlan(
       availableUserAssets: userAssets || [],
       sceneIndex: i,
       totalScenes: segments.length,
+      recentTreatments: recentTreatments.slice(-3),
+      recentFamilies: recentFamilies.slice(-3),
     });
+
+    // Record to rolling visual treatment history
+    recentTreatments.push(visualTreatmentPlan.template);
+    recentFamilies.push(visualTreatmentPlan.family);
 
     // 2. Decide Context-Aware Motion & Camera Dynamics
     const nextRole = analysis[i + 1]?.content_role;

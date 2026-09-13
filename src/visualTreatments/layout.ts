@@ -1,7 +1,6 @@
-import { TreatmentTemplateType } from './types';
+import { TreatmentTemplateType, VisualVariant } from './types';
 
 export type PlacementType = 'UPPER_THIRD' | 'CENTER' | 'LOWER_THIRD' | 'FULL_SCREEN';
-export type VisualVariant = 'MINIMAL' | 'BOLD' | 'COMPACT';
 
 export interface Rect {
   x: number;
@@ -32,7 +31,7 @@ export const SAFE_AREA_CONFIG = {
   
   // Placement specific Y coordinates for default 720x1280
   UPPER_THIRD_Y: 90,
-  CENTER_Y: 210,
+  CENTER_Y: 200,
   LOWER_THIRD_Y: 380,
 };
 
@@ -52,17 +51,18 @@ export function getSafeArea(
   const right = containerWidth - SAFE_AREA_CONFIG.SIDE_MARGIN * scaleX;
 
   return {
-    top,
-    bottom,
-    left,
-    right,
-    usableWidth: right - left,
-    usableHeight: bottom - top,
+    top: Math.round(top),
+    bottom: Math.round(bottom),
+    left: Math.round(left),
+    right: Math.round(right),
+    usableWidth: Math.round(right - left),
+    usableHeight: Math.round(bottom - top),
   };
 }
 
 /**
  * Calculates centered and clamped rectangle for card placement.
+ * Ensures the card stays strictly inside the safe area and never collides with bottom captions.
  */
 export function getPlacementRect(
   placement: PlacementType,
@@ -75,6 +75,7 @@ export function getPlacementRect(
   const scaleY = containerHeight / 1280;
 
   const clampedW = Math.min(cardWidth, safe.usableWidth);
+  const clampedH = Math.min(cardHeight, safe.usableHeight);
   const x = (containerWidth - clampedW) / 2;
 
   let y: number;
@@ -94,21 +95,27 @@ export function getPlacementRect(
       break;
   }
 
+  // Ensure card does not exceed upper notch / status bar
+  if (y < safe.top) {
+    y = safe.top;
+  }
+
   // Ensure card does not collide with bottom caption zone
-  if (y + cardHeight > safe.bottom) {
-    y = Math.max(safe.top, safe.bottom - cardHeight);
+  if (y + clampedH > safe.bottom) {
+    y = Math.max(safe.top, safe.bottom - clampedH);
   }
 
   return {
     x: Math.round(x),
     y: Math.round(y),
     width: Math.round(clampedW),
-    height: Math.round(cardHeight),
+    height: Math.round(clampedH),
   };
 }
 
 /**
- * Responsive card dimensions based on template and visual variant.
+ * Responsive card dimensions based on template, visual variant, and target canvas dimensions.
+ * Scales proportionally from standard 720x1280 base and clamps against safe area usable width.
  */
 export function getResponsiveCardSize(
   template: TreatmentTemplateType,
@@ -117,6 +124,7 @@ export function getResponsiveCardSize(
 ): { width: number; height: number } {
   const isCompact = variant === 'COMPACT';
   const isMinimal = variant === 'MINIMAL';
+  const scale = containerWidth / 720;
 
   let baseW = 440;
   let baseH = 120;
@@ -203,12 +211,17 @@ export function getResponsiveCardSize(
       break;
   }
 
-  // Scale down if container is narrower than default 720
-  const maxAllowedW = containerWidth - 48;
-  const finalW = Math.min(baseW, maxAllowedW);
+  // Scale dimensions proportionally with container width
+  const scaledW = baseW * scale;
+  const scaledH = baseH * scale;
+
+  // Clamp against safe area usable width
+  const safe = getSafeArea(containerWidth, containerWidth * (1280 / 720));
+  const finalW = Math.min(scaledW, safe.usableWidth);
 
   return {
     width: Math.round(finalW),
-    height: Math.round(baseH),
+    height: Math.round(scaledH),
   };
 }
+

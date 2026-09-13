@@ -1,5 +1,6 @@
 import { VisualTreatmentPlan } from '../types';
 import { drawCoverVideo } from '../../engine/renderUtils';
+import { getPlacementRect, getResponsiveCardSize } from '../layout';
 
 export function drawVisualTreatmentOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -25,6 +26,7 @@ export function drawVisualTreatmentOnCanvas(
   if (alpha <= 0) return;
 
   const progress = Math.min(1, Math.max(0, timeInScene / duration));
+  const scale = targetW / 720;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -33,32 +35,34 @@ export function drawVisualTreatmentOnCanvas(
 
   switch (p.type) {
     case 'NUMBER_COUNTER': {
-      const cardW = 380;
-      const cardH = 100;
-      const cardX = (720 - cardW) / 2;
-      const cardY = plan.placement === 'UPPER_THIRD' ? 80 : 200;
+      const size = getResponsiveCardSize('NUMBER_COUNTER', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-        ctx.shadowBlur = 16;
+        ctx.shadowBlur = 16 * scale;
       }
       ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
       ctx.strokeStyle = p.accentColor || '#34d399';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       // Badge
       ctx.fillStyle = p.accentColor || '#34d399';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.badgeText || 'METRIC', cardX + 20, cardY + 28);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.badgeText || 'METRIC', cardX + 20 * scale, cardY + 28 * scale);
 
       // Label
       ctx.fillStyle = '#94a3b8';
-      ctx.font = 'bold 12px "Montserrat", sans-serif';
-      ctx.fillText(p.label, cardX + 20, cardY + 48);
+      ctx.font = `bold ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.label, cardX + 20 * scale, cardY + 48 * scale);
 
       // Counter animation
       const countProgress = Math.min(1, progress * 1.3);
@@ -68,472 +72,507 @@ export function drawVisualTreatmentOnCanvas(
         : `${p.prefix || ''}${currentVal.toLocaleString('id-ID')}${p.suffix || ''}`;
 
       ctx.fillStyle = p.accentColor || '#34d399';
-      ctx.font = '900 28px "Montserrat", sans-serif';
-      ctx.fillText(formatted, cardX + 20, cardY + 84);
+      ctx.font = `900 ${Math.round(28 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(formatted, cardX + 20 * scale, cardY + 84 * scale);
       break;
     }
 
     case 'PERCENTAGE_GROWTH': {
-      const cardW = 420;
-      const cardH = 105;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 200;
+      const size = getResponsiveCardSize('PERCENTAGE_GROWTH', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(56, 189, 248, 0.3)';
-        ctx.shadowBlur = 18;
+        ctx.shadowBlur = 18 * scale;
       }
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       // Title & Growth Badge
       ctx.fillStyle = '#94a3b8';
-      ctx.font = 'bold 11px "Montserrat", sans-serif';
-      ctx.fillText(p.primaryText.toUpperCase(), cardX + 20, cardY + 28);
+      ctx.font = `bold ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.primaryText.toUpperCase(), cardX + 20 * scale, cardY + 28 * scale);
 
       // Growth Multiplier Tag
       if (p.growthMultiplier) {
         ctx.fillStyle = '#10b981';
         ctx.beginPath();
-        ctx.roundRect(cardX + cardW - 100, cardY + 14, 84, 22, [11]);
+        ctx.roundRect(cardX + cardW - 100 * scale, cardY + 14 * scale, 84 * scale, 22 * scale, [11 * scale]);
         ctx.fill();
         ctx.fillStyle = '#020617';
-        ctx.font = '900 11px "Montserrat", sans-serif';
+        ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(p.growthMultiplier, cardX + cardW - 58, cardY + 29);
+        ctx.fillText(p.growthMultiplier, cardX + cardW - 58 * scale, cardY + 29 * scale);
         ctx.textAlign = 'left';
       }
 
       // Comparison Display: fromValue -> toValue
       ctx.fillStyle = '#64748b';
-      ctx.font = '900 24px "Montserrat", sans-serif';
-      ctx.fillText(p.fromValue, cardX + 20, cardY + 70);
+      ctx.font = `900 ${Math.round(24 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.fromValue, cardX + 20 * scale, cardY + 70 * scale);
 
       ctx.fillStyle = '#38bdf8';
-      ctx.font = '900 22px "Montserrat", sans-serif';
-      ctx.fillText('➔', cardX + 110, cardY + 68);
+      ctx.font = `900 ${Math.round(22 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText('➔', cardX + 110 * scale, cardY + 68 * scale);
 
       ctx.fillStyle = '#38bdf8';
-      ctx.font = '900 32px "Montserrat", sans-serif';
-      ctx.fillText(p.toValue, cardX + 150, cardY + 72);
+      ctx.font = `900 ${Math.round(32 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.toValue, cardX + 150 * scale, cardY + 72 * scale);
 
       // Subtext
       if (p.subtext) {
         ctx.fillStyle = '#94a3b8';
-        ctx.font = 'bold 10px "Montserrat", sans-serif';
-        ctx.fillText(p.subtext, cardX + 20, cardY + 94);
+        ctx.font = `bold ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(p.subtext, cardX + 20 * scale, cardY + 94 * scale);
       }
       break;
     }
 
     case 'SIMPLE_BAR_CHART': {
-      const cardW = 420;
-      const cardH = 140;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 190;
+      const size = getResponsiveCardSize('SIMPLE_BAR_CHART', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(0,0,0,0.7)';
-        ctx.shadowBlur = 16;
+        ctx.shadowBlur = 16 * scale;
       }
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#10b981';
-      ctx.font = '900 12px "Montserrat", sans-serif';
-      ctx.fillText(p.title.toUpperCase(), cardX + 20, cardY + 26);
+      ctx.font = `900 ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.title.toUpperCase(), cardX + 20 * scale, cardY + 26 * scale);
 
       const barCount = p.bars.length;
-      const totalBarW = 340;
-      const barSpacing = totalBarW / barCount;
+      const totalBarW = cardW - 80 * scale;
+      const barSpacing = totalBarW / Math.max(1, barCount);
       const maxVal = Math.max(...p.bars.map(b => b.value), 1);
 
       p.bars.forEach((bar, idx) => {
-        const bx = cardX + 30 + idx * barSpacing;
-        const barH = (bar.value / maxVal) * 58 * Math.min(1, progress * 1.4);
-        const by = cardY + 105 - barH;
+        const bx = cardX + 30 * scale + idx * barSpacing;
+        const barH = (bar.value / maxVal) * (58 * scale) * Math.min(1, progress * 1.4);
+        const by = cardY + 105 * scale - barH;
 
         ctx.fillStyle = bar.highlight ? '#10b981' : (bar.color || '#475569');
         ctx.beginPath();
-        ctx.roundRect(bx, by, barSpacing - 24, barH, [6, 6, 0, 0]);
+        ctx.roundRect(bx, by, Math.max(12 * scale, barSpacing - 24 * scale), barH, [6 * scale, 6 * scale, 0, 0]);
         ctx.fill();
 
         ctx.fillStyle = bar.highlight ? '#a7f3d0' : '#cbd5e1';
-        ctx.font = '900 11px "Montserrat", sans-serif';
-        ctx.fillText(bar.displayValue, bx, by - 6);
+        ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(bar.displayValue, bx, by - 6 * scale);
 
         ctx.fillStyle = '#94a3b8';
-        ctx.font = 'bold 9px "Montserrat", sans-serif';
-        ctx.fillText(bar.label.slice(0, 12), bx, cardY + 122);
+        ctx.font = `bold ${Math.round(9 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(bar.label.slice(0, 12), bx, cardY + 122 * scale);
       });
       break;
     }
 
     case 'KEYWORD_POP': {
-      const cardW = 360;
-      const cardH = 80;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 110;
+      const size = getResponsiveCardSize('KEYWORD_POP', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(245, 158, 11, 0.5)';
-        ctx.shadowBlur = 20;
+        ctx.shadowBlur = 20 * scale;
       }
       ctx.fillStyle = '#f59e0b';
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
 
       ctx.fillStyle = '#020617';
       ctx.textAlign = 'center';
-      ctx.font = '900 32px "Montserrat", sans-serif';
-      ctx.fillText(p.mainWord, 360, cardY + 44);
+      ctx.font = `900 ${Math.round(32 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.mainWord, cardX + cardW / 2, cardY + 44 * scale);
 
       if (p.supportingText) {
-        ctx.font = '900 11px "Montserrat", sans-serif';
-        ctx.fillText(p.supportingText.toUpperCase(), 360, cardY + 66);
+        ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(p.supportingText.toUpperCase(), cardX + cardW / 2, cardY + 66 * scale);
       }
       ctx.textAlign = 'left';
       break;
     }
 
     case 'CLAIM_CARD': {
-      const cardW = 440;
-      const cardH = 92;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 100;
+      const size = getResponsiveCardSize('CLAIM_CARD', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 14 * scale;
       }
       ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
       ctx.strokeStyle = '#6366f1';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#818cf8';
-      ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText(`✓ ${p.verifiedBadge || 'INSIGHT'}`, cardX + 18, cardY + 26);
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(`✓ ${p.verifiedBadge || 'INSIGHT'}`, cardX + 18 * scale, cardY + 26 * scale);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 13px "Montserrat", sans-serif';
-      ctx.fillText(`"${p.claim}"`, cardX + 18, cardY + 54);
+      ctx.font = `bold ${Math.round(13 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(`"${p.claim}"`, cardX + 18 * scale, cardY + 54 * scale);
 
       if (p.authorOrSource) {
         ctx.fillStyle = '#94a3b8';
-        ctx.font = 'bold 10px "Montserrat", sans-serif';
-        ctx.fillText(`— ${p.authorOrSource}`, cardX + 18, cardY + 76);
+        ctx.font = `bold ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(`— ${p.authorOrSource}`, cardX + 18 * scale, cardY + 76 * scale);
       }
       break;
     }
 
     case 'ARROW_FLOW': {
-      const cardW = 460;
-      const cardH = 95;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 200;
+      const size = getResponsiveCardSize('ARROW_FLOW', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#38bdf8';
-      ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText(p.title || 'SYSTEM WORKFLOW', cardX + 18, cardY + 24);
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.title || 'SYSTEM WORKFLOW', cardX + 18 * scale, cardY + 24 * scale);
 
       const nodeCount = p.nodes.length;
-      const stepW = 120;
+      const stepGap = 20 * scale;
+      const availableW = cardW - 40 * scale - Math.max(0, nodeCount - 1) * stepGap;
+      const stepW = availableW / Math.max(1, nodeCount);
+
       p.nodes.forEach((node, i) => {
-        const nx = cardX + 20 + i * 140;
+        const nx = cardX + 20 * scale + i * (stepW + stepGap);
         ctx.fillStyle = node.highlight ? 'rgba(56, 189, 248, 0.2)' : 'rgba(30, 41, 59, 0.6)';
         ctx.strokeStyle = node.highlight ? '#38bdf8' : '#475569';
         ctx.beginPath();
-        ctx.roundRect(nx, cardY + 36, stepW, 46, [10]);
+        ctx.roundRect(nx, cardY + 36 * scale, stepW, 46 * scale, [10 * scale]);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = node.highlight ? '#ffffff' : '#cbd5e1';
-        ctx.font = '900 11px "Montserrat", sans-serif';
-        ctx.fillText(node.label, nx + 10, cardY + 54);
+        ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(node.label, nx + 10 * scale, cardY + 54 * scale);
 
         if (node.sublabel) {
           ctx.fillStyle = '#94a3b8';
-          ctx.font = 'bold 9px "Montserrat", sans-serif';
-          ctx.fillText(node.sublabel, nx + 10, cardY + 70);
+          ctx.font = `bold ${Math.round(9 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText(node.sublabel, nx + 10 * scale, cardY + 70 * scale);
         }
 
         if (i < nodeCount - 1) {
           ctx.fillStyle = '#38bdf8';
-          ctx.font = '900 14px "Montserrat", sans-serif';
-          ctx.fillText('→', nx + stepW + 6, cardY + 62);
+          ctx.font = `900 ${Math.round(14 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText('→', nx + stepW + 4 * scale, cardY + 62 * scale);
         }
       });
       break;
     }
 
     case 'ICON_NETWORK': {
-      const cardW = 460;
       const isMultiRow = p.orbitNodes.length > 3;
-      const cardH = isMultiRow ? 135 : 100;
-      const cardX = (720 - cardW) / 2;
-      const cardY = isMultiRow ? 175 : 195;
+      const size = getResponsiveCardSize('ICON_NETWORK', plan.variant ?? 'BOLD', targetW);
+      const adjustedH = isMultiRow ? Math.round(size.height * 1.15) : size.height;
+      const rect = getPlacementRect(plan.placement, size.width, adjustedH, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.95)';
       ctx.strokeStyle = '#6366f1';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       // Header: HUB INTEGRASI & Center Node Label
       ctx.fillStyle = '#a5b4fc';
-      ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText('HUB INTEGRASI', cardX + 18, cardY + 22);
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText('HUB INTEGRASI', cardX + 18 * scale, cardY + 22 * scale);
 
       // Center Node Badge Pill
       ctx.fillStyle = 'rgba(99, 102, 241, 0.25)';
       ctx.strokeStyle = '#6366f1';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX + cardW - 140, cardY + 10, 122, 20, [10]);
+      ctx.roundRect(cardX + cardW - 140 * scale, cardY + 10 * scale, 122 * scale, 20 * scale, [10 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#e0e7ff';
-      ctx.font = '900 10px "Montserrat", sans-serif';
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(p.centerNode.label.slice(0, 14), cardX + cardW - 79, cardY + 24);
+      ctx.fillText(p.centerNode.label.slice(0, 14), cardX + cardW - 79 * scale, cardY + 24 * scale);
       ctx.textAlign = 'left';
 
       // Orbit Nodes Layout (3 to 6 nodes)
       const nodeCount = p.orbitNodes.length;
       if (nodeCount <= 3) {
-        const itemW = (cardW - 40 - Math.max(0, nodeCount - 1) * 12) / Math.max(1, nodeCount);
+        const itemW = (cardW - 40 * scale - Math.max(0, nodeCount - 1) * 12 * scale) / Math.max(1, nodeCount);
         p.orbitNodes.forEach((node, i) => {
-          const nx = cardX + 20 + i * (itemW + 12);
-          const ny = cardY + 38;
+          const nx = cardX + 20 * scale + i * (itemW + 12 * scale);
+          const ny = cardY + 38 * scale;
           ctx.fillStyle = node.highlight ? 'rgba(99, 102, 241, 0.25)' : 'rgba(30, 41, 59, 0.7)';
           ctx.strokeStyle = node.highlight ? '#818cf8' : '#475569';
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1 * scale;
           ctx.beginPath();
-          ctx.roundRect(nx, ny, itemW, 46, [10]);
+          ctx.roundRect(nx, ny, itemW, 46 * scale, [10 * scale]);
           ctx.fill();
           ctx.stroke();
 
           ctx.fillStyle = node.highlight ? '#ffffff' : '#cbd5e1';
-          ctx.font = '900 11px "Montserrat", sans-serif';
-          ctx.fillText(node.label.slice(0, 14), nx + 10, ny + 28);
+          ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText(node.label.slice(0, 14), nx + 10 * scale, ny + 28 * scale);
         });
       } else {
         const cols = nodeCount === 4 ? 2 : 3;
-        const itemW = (cardW - 40 - (cols - 1) * 10) / cols;
-        const itemH = 38;
+        const itemW = (cardW - 40 * scale - (cols - 1) * 10 * scale) / cols;
+        const itemH = 38 * scale;
         p.orbitNodes.forEach((node, i) => {
           const col = i % cols;
           const row = Math.floor(i / cols);
-          const nx = cardX + 20 + col * (itemW + 10);
-          const ny = cardY + 38 + row * (itemH + 8);
+          const nx = cardX + 20 * scale + col * (itemW + 10 * scale);
+          const ny = cardY + 38 * scale + row * (itemH + 8 * scale);
 
           ctx.fillStyle = node.highlight ? 'rgba(99, 102, 241, 0.25)' : 'rgba(30, 41, 59, 0.7)';
           ctx.strokeStyle = node.highlight ? '#818cf8' : '#475569';
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1 * scale;
           ctx.beginPath();
-          ctx.roundRect(nx, ny, itemW, itemH, [8]);
+          ctx.roundRect(nx, ny, itemW, itemH, [8 * scale]);
           ctx.fill();
           ctx.stroke();
 
           ctx.fillStyle = node.highlight ? '#ffffff' : '#cbd5e1';
-          ctx.font = '900 10px "Montserrat", sans-serif';
-          ctx.fillText(node.label.slice(0, 14), nx + 8, ny + 24);
+          ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText(node.label.slice(0, 14), nx + 8 * scale, ny + 24 * scale);
         });
       }
       break;
     }
 
     case 'PROCESS_STEPS': {
-      const cardW = 440;
-      const cardH = 115;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 190;
+      const size = getResponsiveCardSize('PROCESS_STEPS', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#10b981';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.title || '3 LANGKAH SISTEM', cardX + 20, cardY + 26);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.title || '3 LANGKAH SISTEM', cardX + 20 * scale, cardY + 26 * scale);
 
-      const stepW = 124;
+      const stepCount = p.steps.length;
+      const stepGap = 14 * scale;
+      const availableW = cardW - 32 * scale - Math.max(0, stepCount - 1) * stepGap;
+      const stepW = availableW / Math.max(1, stepCount);
+
       p.steps.forEach((step, i) => {
-        const sx = cardX + 16 + i * 138;
+        const sx = cardX + 16 * scale + i * (stepW + stepGap);
         const isActive = step.status === 'ACTIVE' || i + 1 === p.activeStep;
         ctx.fillStyle = isActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(30, 41, 59, 0.6)';
         ctx.strokeStyle = isActive ? '#10b981' : '#475569';
         ctx.beginPath();
-        ctx.roundRect(sx, cardY + 38, stepW, 62, [10]);
+        ctx.roundRect(sx, cardY + 38 * scale, stepW, 62 * scale, [10 * scale]);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = isActive ? '#34d399' : '#64748b';
-        ctx.font = '900 12px "Montserrat", sans-serif';
-        ctx.fillText(`0${step.stepNumber}`, sx + 10, cardY + 56);
+        ctx.font = `900 ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(`0${step.stepNumber}`, sx + 10 * scale, cardY + 56 * scale);
 
         ctx.fillStyle = isActive ? '#ffffff' : '#cbd5e1';
-        ctx.font = 'bold 11px "Montserrat", sans-serif';
-        ctx.fillText(step.title, sx + 10, cardY + 74);
+        ctx.font = `bold ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(step.title, sx + 10 * scale, cardY + 74 * scale);
 
         if (step.desc) {
           ctx.fillStyle = '#94a3b8';
-          ctx.font = 'bold 8px "Montserrat", sans-serif';
-          ctx.fillText(step.desc.slice(0, 18), sx + 10, cardY + 89);
+          ctx.font = `bold ${Math.round(8 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText(step.desc.slice(0, 18), sx + 10 * scale, cardY + 89 * scale);
         }
       });
       break;
     }
 
     case 'BEFORE_AFTER': {
-      const cardW = 460;
-      const cardH = 92;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 85;
+      const size = getResponsiveCardSize('BEFORE_AFTER', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#a855f7';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       // Before Section
       ctx.fillStyle = '#fda4af';
-      ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText(p.beforeLabel, cardX + 18, cardY + 28);
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.beforeLabel, cardX + 18 * scale, cardY + 28 * scale);
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 12px "Montserrat", sans-serif';
-      ctx.fillText(p.beforeText.slice(0, 20), cardX + 18, cardY + 54);
+      ctx.font = `bold ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.beforeText.slice(0, 20), cardX + 18 * scale, cardY + 54 * scale);
 
       // Divider
+      const midX = cardX + cardW / 2;
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       ctx.beginPath();
-      ctx.moveTo(cardX + 220, cardY + 15);
-      ctx.lineTo(cardX + 220, cardY + 77);
+      ctx.moveTo(midX, cardY + 15 * scale);
+      ctx.lineTo(midX, cardY + cardH - 15 * scale);
       ctx.stroke();
 
       // After Section
       ctx.fillStyle = '#a7f3d0';
-      ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText(p.afterLabel, cardX + 235, cardY + 28);
+      ctx.font = `900 ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.afterLabel, midX + 15 * scale, cardY + 28 * scale);
+
       ctx.fillStyle = '#34d399';
-      ctx.font = '900 13px "Montserrat", sans-serif';
-      ctx.fillText(p.afterText.slice(0, 20), cardX + 235, cardY + 54);
+      ctx.font = `900 ${Math.round(13 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.afterText.slice(0, 20), midX + 15 * scale, cardY + 54 * scale);
 
       if (p.improvementMetric) {
         ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 10px "Montserrat", sans-serif';
-        ctx.fillText(`⚡ ${p.improvementMetric}`, cardX + 235, cardY + 76);
+        ctx.font = `bold ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(`⚡ ${p.improvementMetric}`, midX + 15 * scale, cardY + 76 * scale);
       }
       break;
     }
 
     case 'SCREENSHOT_ZOOM': {
-      const cardW = 440;
-      const cardH = 140;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 170;
+      const size = getResponsiveCardSize('SCREENSHOT_ZOOM', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.95)';
       ctx.strokeStyle = p.borderGlow || '#10b981';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = p.borderGlow || '#10b981';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.badge || 'VERIFIED USER PROOF', cardX + 20, cardY + 28);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.badge || 'VERIFIED USER PROOF', cardX + 20 * scale, cardY + 28 * scale);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px "Montserrat", sans-serif';
-      ctx.fillText(p.caption, cardX + 20, cardY + 54);
+      ctx.font = `bold ${Math.round(14 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.caption, cardX + 20 * scale, cardY + 54 * scale);
 
       // Asset Image slot if preloaded
       const assetImg = preloadedImages?.[p.assetUrl];
       if (assetImg && assetImg.complete && assetImg.naturalWidth > 0) {
+        const slotW = 115 * scale;
+        const slotH = cardH - 30 * scale;
+        const slotX = cardX + cardW - slotW - 15 * scale;
+        const slotY = cardY + 15 * scale;
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(cardX + cardW - 130, cardY + 15, 115, 110, [10]);
+        ctx.roundRect(slotX, slotY, slotW, slotH, [10 * scale]);
         ctx.clip();
-        drawCoverVideo(ctx, assetImg, assetImg.naturalWidth, assetImg.naturalHeight, 115, 110);
+        drawCoverVideo(ctx, assetImg, assetImg.naturalWidth, assetImg.naturalHeight, slotW, slotH);
         ctx.restore();
       }
       break;
     }
 
     case 'HIGHLIGHT_BOX': {
-      const cardW = 440;
       const hasAsset = Boolean(p.assetUrl && preloadedImages?.[p.assetUrl]);
-      const cardH = hasAsset ? 150 : 100;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 170;
+      const size = getResponsiveCardSize('HIGHLIGHT_BOX', plan.variant ?? 'BOLD', targetW);
+      const adjustedH = hasAsset ? Math.round(size.height * 1.25) : size.height;
+      const rect = getPlacementRect(plan.placement, size.width, adjustedH, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       if (!isSafeMode) {
         ctx.shadowColor = 'rgba(34, 211, 238, 0.4)';
-        ctx.shadowBlur = 18;
+        ctx.shadowBlur = 18 * scale;
       }
       ctx.fillStyle = 'rgba(2, 6, 23, 0.95)';
       ctx.strokeStyle = p.highlightColor || '#22d3ee';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       // Badge
       ctx.fillStyle = p.highlightColor || '#22d3ee';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.targetLabel.toUpperCase(), cardX + 20, cardY + 28);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.targetLabel.toUpperCase(), cardX + 20 * scale, cardY + 28 * scale);
 
       // Callout text
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 13px "Montserrat", sans-serif';
-      ctx.fillText(p.calloutText, cardX + 20, cardY + 52);
+      ctx.font = `bold ${Math.round(13 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.calloutText, cardX + 20 * scale, cardY + 52 * scale);
 
       const assetImg = p.assetUrl ? preloadedImages?.[p.assetUrl] : null;
       if (assetImg && assetImg.complete && assetImg.naturalWidth > 0) {
-        const imgX = cardX + 20;
-        const imgY = cardY + 64;
-        const imgW = cardW - 40;
-        const imgH = 72;
+        const imgX = cardX + 20 * scale;
+        const imgY = cardY + 64 * scale;
+        const imgW = cardW - 40 * scale;
+        const imgH = cardH - 78 * scale;
 
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(imgX, imgY, imgW, imgH, [8]);
+        ctx.roundRect(imgX, imgY, imgW, imgH, [8 * scale]);
         ctx.clip();
         drawCoverVideo(ctx, assetImg, assetImg.naturalWidth, assetImg.naturalHeight, imgW, imgH);
 
@@ -545,9 +584,9 @@ export function drawVisualTreatmentOnCanvas(
 
         ctx.fillStyle = 'rgba(34, 211, 238, 0.25)';
         ctx.strokeStyle = '#22d3ee';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.roundRect(hlX, hlY, hlW, hlH, [4]);
+        ctx.roundRect(hlX, hlY, hlW, hlH, [4 * scale]);
         ctx.fill();
         ctx.stroke();
         ctx.restore();
@@ -555,152 +594,165 @@ export function drawVisualTreatmentOnCanvas(
         // Clean callout focus box
         ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
         ctx.strokeStyle = '#22d3ee';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.5 * scale;
         ctx.beginPath();
-        ctx.roundRect(cardX + 20, cardY + 60, cardW - 40, 26, [8]);
+        ctx.roundRect(cardX + 20 * scale, cardY + 60 * scale, cardW - 40 * scale, 26 * scale, [8 * scale]);
         ctx.fill();
         ctx.stroke();
 
         ctx.fillStyle = '#a5f3fc';
-        ctx.font = 'bold 11px "Montserrat", sans-serif';
-        ctx.fillText(`⚡ ${p.calloutText}`, cardX + 30, cardY + 77);
+        ctx.font = `bold ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(`⚡ ${p.calloutText}`, cardX + 30 * scale, cardY + 77 * scale);
       }
       break;
     }
 
     case 'PRODUCT_CARD': {
-      const cardW = 420;
-      const cardH = 120;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 85;
+      const size = getResponsiveCardSize('PRODUCT_CARD', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = '#fbbf24';
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#020617';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.badge.toUpperCase(), cardX + 20, cardY + 28);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.badge.toUpperCase(), cardX + 20 * scale, cardY + 28 * scale);
 
-      ctx.font = '900 22px "Montserrat", sans-serif';
-      ctx.fillText(p.productName, cardX + 20, cardY + 58);
+      ctx.font = `900 ${Math.round(22 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.productName, cardX + 20 * scale, cardY + 58 * scale);
 
       if (p.offerPrice) {
-        ctx.font = '900 20px "Montserrat", sans-serif';
-        ctx.fillText(p.offerPrice, cardX + 20, cardY + 86);
+        ctx.font = `900 ${Math.round(20 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(p.offerPrice, cardX + 20 * scale, cardY + 86 * scale);
         if (p.originalPrice) {
           ctx.fillStyle = '#475569';
-          ctx.font = 'bold 13px "Montserrat", sans-serif';
-          ctx.fillText(p.originalPrice, cardX + 160, cardY + 86);
+          ctx.font = `bold ${Math.round(13 * scale)}px "Montserrat", sans-serif`;
+          ctx.fillText(p.originalPrice, cardX + 160 * scale, cardY + 86 * scale);
         }
       }
       break;
     }
 
     case 'ANIMATED_LIST': {
-      const cardW = 440;
-      const cardH = 135;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 180;
+      const size = getResponsiveCardSize('ANIMATED_LIST', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#f43f5e';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#fb7185';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.headline.toUpperCase(), cardX + 20, cardY + 26);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.headline.toUpperCase(), cardX + 20 * scale, cardY + 26 * scale);
 
       p.items.forEach((item, idx) => {
-        const iy = cardY + 52 + idx * 26;
+        const iy = cardY + 52 * scale + idx * 26 * scale;
         ctx.fillStyle = item.highlight ? '#fda4af' : '#94a3b8';
-        ctx.font = 'bold 12px "Montserrat", sans-serif';
-        ctx.fillText(`✕  ${item.text}`, cardX + 20, iy);
+        ctx.font = `bold ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+        ctx.fillText(`✕  ${item.text}`, cardX + 20 * scale, iy);
       });
       break;
     }
 
     case 'TIMELINE': {
-      const cardW = 440;
-      const cardH = 100;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 200;
+      const size = getResponsiveCardSize('TIMELINE', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(2, 6, 23, 0.94)';
       ctx.strokeStyle = '#8b5cf6';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
       ctx.fillStyle = '#a78bfa';
-      ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.title.toUpperCase(), cardX + 20, cardY + 24);
+      ctx.font = `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.title.toUpperCase(), cardX + 20 * scale, cardY + 24 * scale);
 
       // Connecting line
       ctx.strokeStyle = 'rgba(139, 92, 246, 0.4)';
       ctx.beginPath();
-      ctx.moveTo(cardX + 40, cardY + 55);
-      ctx.lineTo(cardX + cardW - 40, cardY + 55);
+      ctx.moveTo(cardX + 40 * scale, cardY + 55 * scale);
+      ctx.lineTo(cardX + cardW - 40 * scale, cardY + 55 * scale);
       ctx.stroke();
 
       const mCount = p.milestones.length;
       p.milestones.forEach((m, idx) => {
-        const mx = cardX + 40 + idx * ((cardW - 80) / (mCount - 1));
+        const mx = cardX + 40 * scale + idx * ((cardW - 80 * scale) / Math.max(1, mCount - 1));
         const isCurrent = idx === p.currentMilestoneIndex;
 
         ctx.fillStyle = isCurrent ? '#8b5cf6' : '#334155';
         ctx.beginPath();
-        ctx.arc(mx, cardY + 55, isCurrent ? 8 : 5, 0, Math.PI * 2);
+        ctx.arc(mx, cardY + 55 * scale, (isCurrent ? 8 : 5) * scale, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = isCurrent ? '#ffffff' : '#94a3b8';
-        ctx.font = isCurrent ? '900 11px "Montserrat", sans-serif' : 'bold 9px "Montserrat", sans-serif';
+        ctx.font = isCurrent
+          ? `900 ${Math.round(11 * scale)}px "Montserrat", sans-serif`
+          : `bold ${Math.round(9 * scale)}px "Montserrat", sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(m.timeLabel, mx, cardY + 75);
-        ctx.fillText(m.title, mx, cardY + 89);
+        ctx.fillText(m.timeLabel, mx, cardY + 75 * scale);
+        ctx.fillText(m.title, mx, cardY + 89 * scale);
         ctx.textAlign = 'left';
       });
       break;
     }
 
     case 'CTA_ACTION': {
-      const cardW = 420;
-      const cardH = 90;
-      const cardX = (720 - cardW) / 2;
-      const cardY = 85;
+      const size = getResponsiveCardSize('CTA_ACTION', plan.variant ?? 'BOLD', targetW);
+      const rect = getPlacementRect(plan.placement, size.width, size.height, targetW, targetH);
+      const cardX = rect.x;
+      const cardY = rect.y;
+      const cardW = rect.width;
+      const cardH = rect.height;
 
       ctx.fillStyle = 'rgba(79, 70, 229, 0.96)';
       ctx.strokeStyle = '#c7d2fe';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * scale;
       ctx.beginPath();
-      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16 * scale]);
       ctx.fill();
       ctx.stroke();
 
+      const centerX = cardX + cardW / 2;
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 14px "Montserrat", sans-serif';
+      ctx.font = `900 ${Math.round(14 * scale)}px "Montserrat", sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(p.headline.toUpperCase(), 360, cardY + 32);
+      ctx.fillText(p.headline.toUpperCase(), centerX, cardY + 32 * scale);
 
       // Action button pill
+      const btnW = 240 * scale;
+      const btnH = 32 * scale;
       ctx.fillStyle = '#fbbf24';
       ctx.beginPath();
-      ctx.roundRect(360 - 120, cardY + 44, 240, 32, [16]);
+      ctx.roundRect(centerX - btnW / 2, cardY + 44 * scale, btnW, btnH, [16 * scale]);
       ctx.fill();
 
       ctx.fillStyle = '#020617';
-      ctx.font = '900 12px "Montserrat", sans-serif';
-      ctx.fillText(p.actionButtonText, 360, cardY + 65);
+      ctx.font = `900 ${Math.round(12 * scale)}px "Montserrat", sans-serif`;
+      ctx.fillText(p.actionButtonText, centerX, cardY + 65 * scale);
       ctx.textAlign = 'left';
       break;
     }

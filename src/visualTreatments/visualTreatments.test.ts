@@ -15,7 +15,9 @@ import {
   extractNetworkContent,
 } from './contentExtractor';
 import { routeVisualTreatment } from './router';
-import { RouteTreatmentContext } from './types';
+import { RouteTreatmentContext, TreatmentTemplateType } from './types';
+import { getSafeArea, getPlacementRect, getResponsiveCardSize, PlacementType } from './layout';
+import { buildIntelligentEditPlan } from '../engine';
 
 function createMockContext(overrides: Partial<RouteTreatmentContext> = {}): RouteTreatmentContext {
   return {
@@ -587,7 +589,7 @@ export function runVisualTreatmentTests() {
   );
 
   // Scenario M: All 15 templates verified in library
-  const expectedTemplates = [
+  const expectedTemplates: TreatmentTemplateType[] = [
     'KEYWORD_POP',
     'CLAIM_CARD',
     'NUMBER_COUNTER',
@@ -608,6 +610,126 @@ export function runVisualTreatmentTests() {
     expectedTemplates.length === 15,
     'Scenario M: 15 standardized templates registered in treatment library',
     expectedTemplates.length
+  );
+
+  // -------------------------------------------------------------------------
+  // FINAL INTEGRATION FIX TESTS: HISTORY INJECTION & SAFE AREA LAYOUT
+  // -------------------------------------------------------------------------
+
+  // Test N1: Safe Area Bounds & Caption Zone Protection (720x1280 and 1080x1920)
+  const safe720 = getSafeArea(720, 1280);
+  const safe1080 = getSafeArea(1080, 1920);
+
+  assert(
+    safe720.left === 32 && safe720.right === 688 && safe720.bottom === 1060 && safe720.top === 80,
+    'Test N1.1: 720x1280 Safe area margins correctly protect top and bottom caption zones',
+    safe720
+  );
+
+  assert(
+    safe1080.left === 48 && safe1080.right === 1032 && safe1080.bottom === 1590 && safe1080.top === 120,
+    'Test N1.2: 1080x1920 Safe area margins scale proportionally',
+    safe1080
+  );
+
+  // Test N2: Card Layout boundaries for all 15 templates
+  let allInsideSafe720 = true;
+  let allInsideSafe1080 = true;
+  let allScaledProportionally = true;
+
+  expectedTemplates.forEach((tpl) => {
+    const size720 = getResponsiveCardSize(tpl, 'BOLD', 720);
+    const size1080 = getResponsiveCardSize(tpl, 'BOLD', 1080);
+
+    // Verify proportional scaling for 1080x1920
+    if (size1080.width <= size720.width || size1080.height <= size720.height) {
+      allScaledProportionally = false;
+    }
+
+    (['UPPER_THIRD', 'CENTER', 'LOWER_THIRD'] as PlacementType[]).forEach((placement) => {
+      const rect720 = getPlacementRect(placement, size720.width, size720.height, 720, 1280);
+      if (
+        rect720.x < safe720.left ||
+        rect720.x + rect720.width > safe720.right ||
+        rect720.y < safe720.top ||
+        rect720.y + rect720.height > safe720.bottom
+      ) {
+        allInsideSafe720 = false;
+      }
+
+      const rect1080 = getPlacementRect(placement, size1080.width, size1080.height, 1080, 1920);
+      if (
+        rect1080.x < safe1080.left ||
+        rect1080.x + rect1080.width > safe1080.right ||
+        rect1080.y < safe1080.top ||
+        rect1080.y + rect1080.height > safe1080.bottom
+      ) {
+        allInsideSafe1080 = false;
+      }
+    });
+  });
+
+  assert(
+    allInsideSafe720,
+    'Test N2.1: All 15 visual treatment cards remain strictly inside safe area bounds for 720x1280',
+    allInsideSafe720
+  );
+  assert(
+    allInsideSafe1080,
+    'Test N2.2: All 15 visual treatment cards remain strictly inside safe area bounds for 1080x1920',
+    allInsideSafe1080
+  );
+  assert(
+    allScaledProportionally,
+    'Test N2.3: All 15 visual treatment cards scale up proportionally when rendered at 1080x1920',
+    allScaledProportionally
+  );
+
+  // Test N3: Full pipeline execution with rolling history and repetition suppression
+  const mockTranscriptSegments = [
+    { id: 1, start: 0, end: 3, text: 'Inilah rahasia optimasi konversi digital.' },
+    { id: 2, start: 3, end: 6, text: 'Fokus pada riset audiens yang mendalam.' },
+    { id: 3, start: 6, end: 9, text: 'Gunakan konten yang relevan dengan problem mereka.' },
+    { id: 4, start: 9, end: 12, text: 'Hasilnya omzet meningkat 250% dalam 30 hari.' },
+    { id: 5, start: 12, end: 15, text: 'Daftar sekarang untuk konsultasi gratis.' },
+  ];
+
+  const mockAnalysis: any[] = mockTranscriptSegments.map((s, idx) => ({
+    id: s.id,
+    start: s.start,
+    end: s.end,
+    content_role: idx === 0 ? 'hook' : idx === 3 ? 'proof' : idx === 4 ? 'cta' : 'explanation',
+    importance: 8,
+    emotion: 'authoritative',
+    key_phrase: s.text,
+    reasoning: 'Test scene reasoning',
+  }));
+
+  const editPlan = buildIntelligentEditPlan(mockTranscriptSegments, mockAnalysis, 'educational');
+  assert(
+    editPlan.scenes.length === 5,
+    'Test N3.1: buildIntelligentEditPlan successfully generates 5 scenes with visual treatments',
+    editPlan.scenes.length
+  );
+
+  const sceneTreatments = editPlan.scenes.map((s) => s.visual_treatment?.template);
+  // Ensure that no single card template is repeated 3 times in a row
+  let hasThreeConsecutiveDuplicates = false;
+  for (let i = 0; i < sceneTreatments.length - 2; i++) {
+    if (
+      sceneTreatments[i] &&
+      sceneTreatments[i] !== 'TALKING_HEAD_FOCUS' &&
+      sceneTreatments[i] === sceneTreatments[i + 1] &&
+      sceneTreatments[i] === sceneTreatments[i + 2]
+    ) {
+      hasThreeConsecutiveDuplicates = true;
+    }
+  }
+
+  assert(
+    !hasThreeConsecutiveDuplicates,
+    'Test N3.2: Production pipeline history active - no card treatment repeats 3 consecutive times',
+    sceneTreatments
   );
 
   console.log(`\nTEST SUMMARY: ${passed} passed, ${failed} failed.`);
