@@ -62,7 +62,7 @@ export const VisualTreatmentOverlay: React.FC<VisualTreatmentOverlayProps> = ({
         <div className="w-full max-w-[320px] bg-slate-950/95 border-2 border-emerald-400 p-3 rounded-2xl shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="bg-emerald-400 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block">
-              {p.badgeText || 'VERIFIED DATA'}
+              {p.badgeText || 'METRIC'}
             </span>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               {p.label}
@@ -171,7 +171,7 @@ export const VisualTreatmentOverlay: React.FC<VisualTreatmentOverlayProps> = ({
           <div className="flex items-center gap-1.5 mb-1">
             <Shield className="w-3.5 h-3.5 text-indigo-400" />
             <span className="text-[9px] font-black text-indigo-300 uppercase tracking-wide">
-              {p.verifiedBadge || 'VERIFIED INSIGHT'}
+              {p.verifiedBadge || 'INSIGHT'}
             </span>
           </div>
           <p className="text-xs font-bold text-white leading-snug">"{p.claim}"</p>

@@ -1,14 +1,16 @@
 import { PercentageGrowthParams, RouteTreatmentContext } from '../types';
+import { ExtractedMetricContent } from '../contentExtractor';
 
 export function buildPercentageGrowthParams(
   ctx: RouteTreatmentContext,
+  extracted?: ExtractedMetricContent,
   overrides?: Partial<PercentageGrowthParams>
 ): PercentageGrowthParams {
   const metric = ctx.resolution.metricData;
-  const primaryText = metric?.label || 'CTR Scale';
-  const fromVal = metric?.fromValue || '1.0%';
-  const toVal = metric?.toValue || '3.2%';
-  const mult = metric?.multiplier || '+220%';
+  const primaryText = extracted?.label || metric?.label || ctx.emphasisTarget || 'Pertumbuhan';
+  const fromVal = extracted?.fromValue || metric?.fromValue || '';
+  const toVal = extracted?.toValue || metric?.toValue || '';
+  const mult = extracted?.multiplier || metric?.multiplier || undefined;
 
   return {
     type: 'PERCENTAGE_GROWTH',
@@ -19,7 +21,7 @@ export function buildPercentageGrowthParams(
     growthMultiplier: mult,
     emphasis: toVal,
     direction: 'UP',
-    subtext: 'Optimal Creative Conversion',
+    subtext: ctx.emphasisTarget ? `Target: ${ctx.emphasisTarget}` : undefined,
     accentColor: '#38bdf8',
     ...overrides,
   };

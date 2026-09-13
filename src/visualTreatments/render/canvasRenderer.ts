@@ -1,5 +1,5 @@
 import { VisualTreatmentPlan } from '../types';
-import { drawCoverVideo } from '../../engine/renderFrame';
+import { drawCoverVideo } from '../../engine/renderUtils';
 
 export function drawVisualTreatmentOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -53,7 +53,7 @@ export function drawVisualTreatmentOnCanvas(
       // Badge
       ctx.fillStyle = p.accentColor || '#34d399';
       ctx.font = '900 11px "Montserrat", sans-serif';
-      ctx.fillText(p.badgeText || 'VERIFIED DATA', cardX + 20, cardY + 28);
+      ctx.fillText(p.badgeText || 'METRIC', cardX + 20, cardY + 28);
 
       // Label
       ctx.fillStyle = '#94a3b8';
@@ -227,7 +227,7 @@ export function drawVisualTreatmentOnCanvas(
 
       ctx.fillStyle = '#818cf8';
       ctx.font = '900 10px "Montserrat", sans-serif';
-      ctx.fillText(`✓ ${p.verifiedBadge || 'VERIFIED INSIGHT'}`, cardX + 18, cardY + 26);
+      ctx.fillText(`✓ ${p.verifiedBadge || 'INSIGHT'}`, cardX + 18, cardY + 26);
 
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 13px "Montserrat", sans-serif';

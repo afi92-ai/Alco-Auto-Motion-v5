@@ -1,14 +1,22 @@
 import { NumberCounterParams, RouteTreatmentContext } from '../types';
+import { ExtractedMetricContent } from '../contentExtractor';
 
 export function buildNumberCounterParams(
   ctx: RouteTreatmentContext,
+  extracted?: ExtractedMetricContent,
   overrides?: Partial<NumberCounterParams>
 ): NumberCounterParams {
   const metric = ctx.resolution.metricData;
-  const toVal = metric?.primaryNumber ?? 10;
-  const targetLabel = metric?.label || ctx.emphasisTarget || 'Metric Achievement';
-  const prefix = metric?.toValue?.startsWith('Rp') ? 'Rp ' : '';
-  const suffix = metric?.toValue?.endsWith('x') ? 'x' : metric?.toValue?.endsWith('%') ? '%' : '';
+  const toVal = extracted?.numericValue ?? metric?.primaryNumber ?? 0;
+  const targetLabel = extracted?.label || metric?.label || ctx.emphasisTarget || 'Metric';
+  const prefix = extracted?.toValue?.startsWith('Rp') || metric?.toValue?.startsWith('Rp') ? 'Rp ' : '';
+  const suffix = extracted?.toValue?.endsWith('x') || metric?.toValue?.endsWith('x')
+    ? 'x'
+    : extracted?.toValue?.endsWith('%') || metric?.toValue?.endsWith('%')
+    ? '%'
+    : '';
+
+  const badgeText = ctx.resolution.status === 'EXACT_EVIDENCE' ? 'VERIFIED EVIDENCE' : 'METRIC';
 
   return {
     type: 'NUMBER_COUNTER',
@@ -18,9 +26,9 @@ export function buildNumberCounterParams(
     toValue: toVal,
     prefix,
     suffix,
-    formattedTarget: metric?.toValue || `${toVal}${suffix}`,
-    emphasis: ctx.emphasisTarget || metric?.toValue || `${toVal}${suffix}`,
-    badgeText: 'VERIFIED DATA',
+    formattedTarget: extracted?.singleValue || metric?.toValue || `${toVal}${suffix}`,
+    emphasis: ctx.emphasisTarget || extracted?.singleValue || metric?.toValue || `${toVal}${suffix}`,
+    badgeText,
     accentColor: '#34d399',
     ...overrides,
   };

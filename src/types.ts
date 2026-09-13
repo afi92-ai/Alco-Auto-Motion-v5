@@ -1,3 +1,5 @@
+import type { VisualEvidenceResolution, VisualTreatmentPlan } from './visualTreatments/types';
+
 export type ContentType =
   | 'clean_creator'
   | 'fast_tiktok'
@@ -549,9 +551,9 @@ export interface SceneEditPlan {
   // Visual Evidence Director
   visual_evidence_directive?: VisualEvidenceDirective;
   // Visual Evidence Resolver
-  visual_evidence_resolution?: any;
+  visual_evidence_resolution?: VisualEvidenceResolution;
   // Visual Treatment Router & Library
-  visual_treatment?: any;
+  visual_treatment?: VisualTreatmentPlan;
 }
 
 export interface StylePresetProfile {

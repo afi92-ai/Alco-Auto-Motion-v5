@@ -16,7 +16,7 @@ export function buildKeywordPopParams(
     type: 'KEYWORD_POP',
     duration: Math.min(ctx.duration, 2.0),
     mainWord: word.toUpperCase(),
-    supportingText: 'Kunci Utama Meta Ads',
+    supportingText: undefined,
     style: 'PUNCH',
     accentColor: '#f59e0b',
     ...overrides,

@@ -1,21 +1,27 @@
-import { AnimatedListParams, RouteTreatmentContext } from '../types';
+import { AnimatedListParams, RouteTreatmentContext, ListItem } from '../types';
+import { ExtractedListContent } from '../contentExtractor';
 
 export function buildAnimatedListParams(
   ctx: RouteTreatmentContext,
+  extracted?: ExtractedListContent,
   overrides?: Partial<AnimatedListParams>
 ): AnimatedListParams {
-  const headline = ctx.emphasisTarget || '3 Kesalahan Utama';
+  const headline = extracted?.headline || ctx.emphasisTarget || 'POIN UTAMA';
+  const items: ListItem[] = extracted && extracted.items.length > 0
+    ? extracted.items.map((text, idx) => ({
+        text,
+        icon: 'CHECK',
+        highlight: idx === 0,
+      }))
+    : [{ text: ctx.emphasisTarget || 'Poin Pembahasan', icon: 'CHECK', highlight: true }];
+
   return {
     type: 'ANIMATED_LIST',
     duration: Math.min(ctx.duration, 3.2),
     headline,
-    items: [
-      { text: 'Targeting terlalu luas tanpa diferensiasi', icon: 'ALERT' },
-      { text: 'Hook visual membosankan di 3 detik pertama', icon: 'ALERT', highlight: true },
-      { text: 'Tidak ada bukti nyata (proof evidence)', icon: 'ALERT' },
-    ],
+    items,
     listType: 'CHECKLIST',
-    activeItemIndex: 1,
+    activeItemIndex: 0,
     accentColor: '#f43f5e',
     ...overrides,
   };
