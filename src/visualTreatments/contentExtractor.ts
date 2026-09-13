@@ -506,7 +506,7 @@ export function extractProcessSteps(transcript: string): ExtractedProcessContent
 
   const text = transcript.trim();
 
-  // Match step markers
+  // Pattern 1: Step markers (e.g. "langkah 1: riset, langkah 2: konten")
   const stepMatches = text.match(/(?:langkah|step|tahap)\s*(\d+)[:\s]+([^,;.]+)/gi);
   if (stepMatches && stepMatches.length >= 2) {
     const steps: ExtractedStepItem[] = stepMatches.map((m, idx) => {
@@ -519,6 +519,36 @@ export function extractProcessSteps(transcript: string): ExtractedProcessContent
     return {
       title: 'LANGKAH SISTEM',
       steps,
+      confidence: 0.9,
+    };
+  }
+
+  // Pattern 2: Ordinal words (e.g. "Pertama riset, kedua produksi konten, ketiga jalankan ads")
+  const ordinalRegex = /\b(pertama|kedua|ketiga|keempat|kelima)\b[:\s]*(.*?)(?=(?:\b(?:pertama|kedua|ketiga|keempat|kelima)\b)|$)/gi;
+  const ordinalMatches: ExtractedStepItem[] = [];
+  let ordMatch: RegExpExecArray | null;
+  const ordMap: Record<string, number> = {
+    pertama: 1,
+    kedua: 2,
+    ketiga: 3,
+    keempat: 4,
+    kelima: 5,
+  };
+  while ((ordMatch = ordinalRegex.exec(text)) !== null) {
+    const word = ordMatch[1].toLowerCase();
+    const content = ordMatch[2].replace(/^[,\s;:-]+|[,\s;:-]+$/g, '').trim();
+    if (content.length > 0) {
+      ordinalMatches.push({
+        stepNumber: ordMap[word] || (ordinalMatches.length + 1),
+        title: cleanText(content, 25),
+      });
+    }
+  }
+
+  if (ordinalMatches.length >= 2) {
+    return {
+      title: 'LANGKAH SISTEM',
+      steps: ordinalMatches,
       confidence: 0.88,
     };
   }
@@ -534,6 +564,8 @@ export function extractTimelineContent(transcript: string): ExtractedTimelineCon
   if (!transcript) return { title: null, milestones: [], confidence: 0 };
 
   const text = transcript.trim();
+
+  // Pattern 1: Numeric milestones (e.g. "hari 1: riset, hari 7: launch")
   const timeMatches = text.match(/\b(hari\s+\d+|minggu\s+\d+|bulan\s+\d+|hari\s+ke-\d+)[:\s]+([^,;.]+)/gi);
   if (timeMatches && timeMatches.length >= 2) {
     const milestones: ExtractedTimelineItem[] = timeMatches.map(m => {
@@ -553,7 +585,30 @@ export function extractTimelineContent(transcript: string): ExtractedTimelineCon
     return {
       title: 'TIMELINE EKSEKUSI',
       milestones,
-      confidence: 0.85,
+      confidence: 0.88,
+    };
+  }
+
+  // Pattern 2: Ordinal time milestones (e.g. "Hari pertama riset, hari ketiga produksi, minggu pertama launch")
+  const timeKeywordRegex = /\b((?:hari|minggu|bulan)\s+(?:pertama|kedua|ketiga|keempat|kelima|ke-?\d+|\d+))\b[:\s]*(.*?)(?=(?:\b(?:hari|minggu|bulan)\s+(?:pertama|kedua|ketiga|keempat|kelima|ke-?\d+|\d+)\b)|$)/gi;
+  const timeOrdinalMatches: ExtractedTimelineItem[] = [];
+  let toMatch: RegExpExecArray | null;
+  while ((toMatch = timeKeywordRegex.exec(text)) !== null) {
+    const label = toMatch[1].toUpperCase();
+    const content = toMatch[2].replace(/^[,\s;:-]+|[,\s;:-]+$/g, '').trim();
+    if (content.length > 0) {
+      timeOrdinalMatches.push({
+        timeLabel: label,
+        title: cleanText(content, 25),
+      });
+    }
+  }
+
+  if (timeOrdinalMatches.length >= 2) {
+    return {
+      title: 'TIMELINE EKSEKUSI',
+      milestones: timeOrdinalMatches,
+      confidence: 0.88,
     };
   }
 

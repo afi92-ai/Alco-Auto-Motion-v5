@@ -42,6 +42,8 @@ export type TreatmentTemplateType =
   | 'TALKING_HEAD_FOCUS'
   | 'BROLL_CUTAWAY';
 
+export type VisualVariant = 'MINIMAL' | 'BOLD' | 'COMPACT';
+
 // 1. NUMBER_COUNTER
 export interface NumberCounterParams {
   type: 'NUMBER_COUNTER';
@@ -55,6 +57,7 @@ export interface NumberCounterParams {
   emphasis: string;
   badgeText?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 2. PERCENTAGE_GROWTH
@@ -69,6 +72,7 @@ export interface PercentageGrowthParams {
   direction?: 'UP' | 'DOWN';
   subtext?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 3. SIMPLE_BAR_CHART
@@ -88,6 +92,7 @@ export interface SimpleBarChartParams {
   highlightIndex: number;
   comparisonNote?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 4. KEYWORD_POP
@@ -98,6 +103,7 @@ export interface KeywordPopParams {
   supportingText?: string;
   style?: 'PUNCH' | 'GLOW' | 'BADGE' | 'NEON';
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 5. CLAIM_CARD
@@ -110,6 +116,7 @@ export interface ClaimCardParams {
   authorOrSource?: string;
   iconType?: 'CHECK' | 'SHIELD' | 'STAR' | 'TARGET';
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 6. ARROW_FLOW
@@ -127,6 +134,7 @@ export interface ArrowFlowParams {
   flowDirection?: 'RIGHT' | 'DOWN';
   activeStepIndex?: number;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 7. PROCESS_STEPS
@@ -144,6 +152,7 @@ export interface ProcessStepsParams {
   steps: ProcessStepItem[];
   activeStep: number;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 8. ICON_NETWORK
@@ -159,6 +168,7 @@ export interface IconNetworkParams {
   centerNode: { label: string; icon: string };
   orbitNodes: NetworkNode[];
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 9. BEFORE_AFTER
@@ -173,6 +183,7 @@ export interface BeforeAfterParams {
   improvementMetric?: string;
   assetUrl?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 10. SCREENSHOT_ZOOM
@@ -186,6 +197,7 @@ export interface ScreenshotZoomParams {
   borderGlow?: string;
   badge?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 11. HIGHLIGHT_BOX
@@ -202,6 +214,7 @@ export interface HighlightBoxParams {
   calloutText: string;
   highlightColor?: string;
   assetUrl?: string;
+  variant?: VisualVariant;
 }
 
 // 12. PRODUCT_CARD
@@ -216,6 +229,7 @@ export interface ProductCardParams {
   assetUrl?: string;
   urgencyText?: string;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 13. ANIMATED_LIST
@@ -233,6 +247,7 @@ export interface AnimatedListParams {
   listType?: 'CHECKLIST' | 'BULLETS' | 'NUMBERED';
   activeItemIndex?: number;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 14. TIMELINE
@@ -250,6 +265,7 @@ export interface TimelineParams {
   milestones: MilestoneItem[];
   currentMilestoneIndex: number;
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // 15. CTA_ACTION
@@ -262,6 +278,7 @@ export interface CtaActionParams {
   directionArrow?: boolean;
   style?: 'PILL' | 'CARD' | 'MINIMAL_BANNER';
   accentColor?: string;
+  variant?: VisualVariant;
 }
 
 // Fallback: TALKING_HEAD_FOCUS
@@ -342,4 +359,6 @@ export interface RouteTreatmentContext {
   availableUserAssets: UserProofAsset[];
   sceneIndex: number;
   totalScenes: number;
+  recentTreatments?: TreatmentTemplateType[];
+  recentFamilies?: TreatmentFamily[];
 }

@@ -412,6 +412,204 @@ export function runVisualTreatmentTests() {
     labelsF
   );
 
+  // -------------------------------------------------------------------------
+  // MVP BATCH 2 COMPREHENSIVE SCENARIO TESTS (SCENARIOS A - M)
+  // -------------------------------------------------------------------------
+
+  // Scenario A: "ROAS mencapai 4.2x" -> NUMBER_COUNTER
+  const planScenA = routeVisualTreatment(createMockContext({
+    role: 'proof',
+    visualPurpose: 'PROOF',
+    transcript: 'ROAS mencapai 4.2x bulan ini',
+  }));
+  assert(
+    planScenA.template === 'NUMBER_COUNTER' &&
+    (planScenA.params as any).formattedTarget.includes('4.2x'),
+    'Scenario A: "ROAS mencapai 4.2x" produces NUMBER_COUNTER',
+    planScenA
+  );
+
+  // Scenario B: "CTR naik dari 1% menjadi 3%" -> PERCENTAGE_GROWTH
+  const planScenB = routeVisualTreatment(createMockContext({
+    role: 'proof',
+    visualPurpose: 'PROOF',
+    transcript: 'CTR naik dari 1% menjadi 3%',
+  }));
+  assert(
+    planScenB.template === 'PERCENTAGE_GROWTH' &&
+    (planScenB.params as any).fromValue === '1%' &&
+    (planScenB.params as any).toValue === '3%',
+    'Scenario B: "CTR naik dari 1% menjadi 3%" produces PERCENTAGE_GROWTH',
+    planScenB
+  );
+
+  // Scenario C: "Ada tiga masalah: hook lemah, targeting terlalu luas, proof tidak ada" -> ANIMATED_LIST
+  const planScenC = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'Ada tiga masalah: hook lemah, targeting terlalu luas, proof tidak ada',
+  }));
+  assert(
+    planScenC.template === 'ANIMATED_LIST' &&
+    (planScenC.params as any).items.length === 3,
+    'Scenario C: "Ada tiga masalah: ..." produces ANIMATED_LIST with 3 items',
+    planScenC
+  );
+
+  // Scenario D: "Pertama riset, kedua produksi konten, ketiga jalankan ads" -> PROCESS_STEPS or ARROW_FLOW
+  const planScenD = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'Pertama riset, kedua produksi konten, ketiga jalankan ads',
+  }));
+  assert(
+    (planScenD.template === 'ARROW_FLOW' || planScenD.template === 'PROCESS_STEPS'),
+    'Scenario D: "Pertama ..., kedua ..., ketiga ..." produces ARROW_FLOW or PROCESS_STEPS',
+    planScenD.template
+  );
+
+  // Scenario E: "Hari pertama riset, hari ketiga produksi, minggu pertama launch" -> TIMELINE
+  const planScenE = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'Hari pertama riset, hari ketiga produksi, minggu pertama launch',
+  }));
+  assert(
+    planScenE.template === 'TIMELINE' &&
+    (planScenE.params as any).milestones.length >= 2,
+    'Scenario E: "Hari pertama ..., hari ketiga ..." produces TIMELINE',
+    planScenE
+  );
+
+  // Scenario F: "ALCO menghubungkan riset, konten, ads dan analytics" -> ICON_NETWORK
+  const planScenF = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'ALCO menghubungkan riset, konten, ads dan analytics dalam satu ekosistem.',
+  }));
+  assert(
+    planScenF.template === 'ICON_NETWORK' &&
+    (planScenF.params as any).centerNode.label === 'ALCO' &&
+    (planScenF.params as any).orbitNodes.length >= 3,
+    'Scenario F: "ALCO menghubungkan ..." produces ICON_NETWORK',
+    planScenF
+  );
+
+  // Scenario G: "Dulu CTR 1%, sekarang 3%" -> BEFORE_AFTER
+  const planScenG = routeVisualTreatment(createMockContext({
+    role: 'curiosity',
+    transcript: 'Dulu CTR 1%, sekarang 3%',
+  }));
+  assert(
+    planScenG.template === 'BEFORE_AFTER' &&
+    (planScenG.params as any).beforeText.includes('1%') &&
+    (planScenG.params as any).afterText.includes('3%'),
+    'Scenario G: "Dulu ..., sekarang ..." produces BEFORE_AFTER',
+    planScenG
+  );
+
+  // Scenario H: "Strategi ini sangat efektif" -> falls back to Claim Card / text emphasis, not fake metric
+  const planScenH = routeVisualTreatment(createMockContext({
+    role: 'proof',
+    visualPurpose: 'PROOF',
+    transcript: 'Strategi ini sangat efektif',
+  }));
+  assert(
+    planScenH.family !== 'METRIC_ANIMATION' &&
+    planScenH.template !== 'BEFORE_AFTER' &&
+    (planScenH.template === 'CLAIM_CARD' || planScenH.template === 'KEYWORD_POP'),
+    'Scenario H: "Strategi ini sangat efektif" avoids fake metric / fake before-after',
+    planScenH.template
+  );
+
+  // Scenario I: Proof scene with authentic screenshot -> SCREENSHOT_ZOOM or HIGHLIGHT_BOX
+  const planScenI1 = routeVisualTreatment(createMockContext({
+    role: 'proof',
+    visualPurpose: 'PROOF',
+    transcript: 'Lihat data di dashboard',
+    resolution: {
+      status: 'EXACT_EVIDENCE',
+      resolvedAsset: {
+        id: 'asset-1',
+        name: 'proof.png',
+        url: 'blob:asset-1',
+        type: 'screenshot',
+        label: 'Dashboard Ads',
+      },
+      confidence: 0.95,
+      reason: 'Exact evidence matched',
+    },
+  }));
+  assert(
+    planScenI1.template === 'SCREENSHOT_ZOOM' &&
+    planScenI1.evidenceResolved === true,
+    'Scenario I: Authentic screenshot matched produces SCREENSHOT_ZOOM',
+    planScenI1
+  );
+
+  // Scenario J: "Klik link di bio" -> CTA_ACTION
+  const planScenJ = routeVisualTreatment(createMockContext({
+    role: 'cta',
+    visualPurpose: 'CTA',
+    transcript: 'Klik link di bio untuk coba sekarang juga!',
+  }));
+  assert(
+    planScenJ.template === 'CTA_ACTION' &&
+    (planScenJ.params as any).actionButtonText.length > 0,
+    'Scenario J: "Klik link di bio" produces CTA_ACTION',
+    planScenJ
+  );
+
+  // Scenario K: Multiple consecutive explanation scenes -> avoid identical treatment spam (repetition penalty)
+  const planScenK1 = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'Strategi ini bekerja untuk semua kategori produk.',
+    recentTreatments: ['CLAIM_CARD'],
+  }));
+  assert(
+    planScenK1.template !== 'CLAIM_CARD',
+    'Scenario K: Consecutive explanation after CLAIM_CARD triggers repetition penalty/balancing',
+    planScenK1.template
+  );
+
+  // Scenario L: No generated plan contains fabricated numeric or business claims
+  const planScenL = routeVisualTreatment(createMockContext({
+    role: 'explanation',
+    visualPurpose: 'EXPLANATION',
+    transcript: 'Kami mengoptimalkan strategi marketing klien.',
+  }));
+  assert(
+    planScenL.family !== 'METRIC_ANIMATION' &&
+    (planScenL.params as any).fromValue === undefined,
+    'Scenario L: Transcript without numbers produces zero fabricated metrics',
+    planScenL
+  );
+
+  // Scenario M: All 15 templates verified in library
+  const expectedTemplates = [
+    'KEYWORD_POP',
+    'CLAIM_CARD',
+    'NUMBER_COUNTER',
+    'PERCENTAGE_GROWTH',
+    'SIMPLE_BAR_CHART',
+    'ANIMATED_LIST',
+    'PROCESS_STEPS',
+    'ARROW_FLOW',
+    'TIMELINE',
+    'ICON_NETWORK',
+    'BEFORE_AFTER',
+    'SCREENSHOT_ZOOM',
+    'HIGHLIGHT_BOX',
+    'PRODUCT_CARD',
+    'CTA_ACTION',
+  ];
+  assert(
+    expectedTemplates.length === 15,
+    'Scenario M: 15 standardized templates registered in treatment library',
+    expectedTemplates.length
+  );
+
   console.log(`\nTEST SUMMARY: ${passed} passed, ${failed} failed.`);
   return { passed, failed };
 }

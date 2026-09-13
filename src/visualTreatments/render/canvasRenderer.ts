@@ -495,6 +495,79 @@ export function drawVisualTreatmentOnCanvas(
       break;
     }
 
+    case 'HIGHLIGHT_BOX': {
+      const cardW = 440;
+      const hasAsset = Boolean(p.assetUrl && preloadedImages?.[p.assetUrl]);
+      const cardH = hasAsset ? 150 : 100;
+      const cardX = (720 - cardW) / 2;
+      const cardY = 170;
+
+      if (!isSafeMode) {
+        ctx.shadowColor = 'rgba(34, 211, 238, 0.4)';
+        ctx.shadowBlur = 18;
+      }
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.95)';
+      ctx.strokeStyle = p.highlightColor || '#22d3ee';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.fill();
+      ctx.stroke();
+
+      // Badge
+      ctx.fillStyle = p.highlightColor || '#22d3ee';
+      ctx.font = '900 11px "Montserrat", sans-serif';
+      ctx.fillText(p.targetLabel.toUpperCase(), cardX + 20, cardY + 28);
+
+      // Callout text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 13px "Montserrat", sans-serif';
+      ctx.fillText(p.calloutText, cardX + 20, cardY + 52);
+
+      const assetImg = p.assetUrl ? preloadedImages?.[p.assetUrl] : null;
+      if (assetImg && assetImg.complete && assetImg.naturalWidth > 0) {
+        const imgX = cardX + 20;
+        const imgY = cardY + 64;
+        const imgW = cardW - 40;
+        const imgH = 72;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(imgX, imgY, imgW, imgH, [8]);
+        ctx.clip();
+        drawCoverVideo(ctx, assetImg, assetImg.naturalWidth, assetImg.naturalHeight, imgW, imgH);
+
+        // Pulsing highlight box inside asset
+        const hlX = imgX + (p.highlightArea.xPercent / 100) * imgW;
+        const hlY = imgY + (p.highlightArea.yPercent / 100) * imgH;
+        const hlW = (p.highlightArea.widthPercent / 100) * imgW;
+        const hlH = (p.highlightArea.heightPercent / 100) * imgH;
+
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.25)';
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(hlX, hlY, hlW, hlH, [4]);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Clean callout focus box
+        ctx.fillStyle = 'rgba(34, 211, 238, 0.15)';
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(cardX + 20, cardY + 60, cardW - 40, 26, [8]);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#a5f3fc';
+        ctx.font = 'bold 11px "Montserrat", sans-serif';
+        ctx.fillText(`⚡ ${p.calloutText}`, cardX + 30, cardY + 77);
+      }
+      break;
+    }
+
     case 'PRODUCT_CARD': {
       const cardW = 420;
       const cardH = 120;

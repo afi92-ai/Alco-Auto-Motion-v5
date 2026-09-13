@@ -362,6 +362,43 @@ export const VisualTreatmentOverlay: React.FC<VisualTreatmentOverlayProps> = ({
         </div>
       )}
 
+      {/* 9B. HIGHLIGHT_BOX */}
+      {p.type === 'HIGHLIGHT_BOX' && (
+        <div className="w-full max-w-[340px] bg-slate-950/95 border-2 border-cyan-400 p-3 rounded-2xl shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between mb-2">
+            <span className="bg-cyan-400 text-slate-950 text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block">
+              {p.targetLabel || 'FOKUS'}
+            </span>
+            <span className="text-[10px] font-bold text-cyan-300 font-mono">
+              {p.calloutText}
+            </span>
+          </div>
+          {p.assetUrl ? (
+            <div className="relative w-full h-24 rounded-lg overflow-hidden border border-slate-700 bg-slate-900 mt-1">
+              <img
+                src={p.assetUrl}
+                alt="Evidence Screenshot"
+                className="w-full h-full object-cover"
+              />
+              <div
+                className="absolute border-2 border-cyan-400 bg-cyan-400/20 rounded shadow-[0_0_12px_rgba(34,211,238,0.8)] animate-pulse"
+                style={{
+                  left: `${p.highlightArea.xPercent}%`,
+                  top: `${p.highlightArea.yPercent}%`,
+                  width: `${p.highlightArea.widthPercent}%`,
+                  height: `${p.highlightArea.heightPercent}%`,
+                }}
+              />
+            </div>
+          ) : (
+            <div className="p-2 bg-cyan-950/40 border border-cyan-500/40 rounded-lg flex items-center gap-2">
+              <Target className="w-4 h-4 text-cyan-400 shrink-0" />
+              <p className="text-xs font-bold text-slate-200">{p.calloutText}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 10. PRODUCT_CARD */}
       {p.type === 'PRODUCT_CARD' && (
         <div className="w-full max-w-[320px] bg-amber-400 text-slate-950 border-2 border-white p-3 rounded-2xl shadow-2xl">

@@ -323,22 +323,7 @@ export function routeVisualTreatment(ctx: RouteTreatmentContext): VisualTreatmen
       };
     }
 
-    // 7B. Multiple points / Checklist / Errors (requires valid list extraction)
-    if (listContent.confidence >= 0.7) {
-      return {
-        family: 'CALLOUT',
-        template: 'ANIMATED_LIST',
-        duration: Math.min(duration, 3.0),
-        params: buildAnimatedListParams(ctx, listContent),
-        rationale: 'Multiple distinct points extracted: deploying Animated List checklist.',
-        sourceDirective: directive,
-        evidenceResolved: false,
-        requiresHold: false,
-        placement: 'CENTER',
-      };
-    }
-
-    // 7C. Sequential Process
+    // 7B. Sequential Process (steps / workflow)
     if (processContent.confidence >= 0.7) {
       return {
         family: 'DIAGRAM_FLOW',
@@ -353,8 +338,7 @@ export function routeVisualTreatment(ctx: RouteTreatmentContext): VisualTreatmen
       };
     }
 
-    // 7D. Ecosystem / Multi-feature Icon Network
-    // Strictly requires valid extracted nodes (>= 3 distinct components)
+    // 7C. Ecosystem / Multi-feature Icon Network (>= 3 distinct components)
     if (networkContent.confidence >= 0.7 && networkContent.nodes.length >= 3) {
       return {
         family: 'ANIMATED_ILLUSTRATION',
@@ -369,7 +353,59 @@ export function routeVisualTreatment(ctx: RouteTreatmentContext): VisualTreatmen
       };
     }
 
-    // 7E. Fallback for explanation: Claim Card
+    // 7D. Multiple points / Checklist / Errors (requires valid list extraction)
+    if (listContent.confidence >= 0.7) {
+      return {
+        family: 'CALLOUT',
+        template: 'ANIMATED_LIST',
+        duration: Math.min(duration, 3.0),
+        params: buildAnimatedListParams(ctx, listContent),
+        rationale: 'Multiple distinct points extracted: deploying Animated List checklist.',
+        sourceDirective: directive,
+        evidenceResolved: false,
+        requiresHold: false,
+        placement: 'CENTER',
+      };
+    }
+
+    // 7E. Fallback for explanation with repetition & rhythm control
+    const lastTreatment = ctx.recentTreatments && ctx.recentTreatments.length > 0
+      ? ctx.recentTreatments[ctx.recentTreatments.length - 1]
+      : null;
+
+    if (lastTreatment === 'CLAIM_CARD') {
+      if (ctx.emphasisTarget) {
+        return {
+          family: 'KINETIC_TYPOGRAPHY',
+          template: 'KEYWORD_POP',
+          duration: Math.min(duration, 2.0),
+          params: buildKeywordPopParams(ctx, { mainWord: ctx.emphasisTarget.toUpperCase() }),
+          rationale: 'Balancing visual rhythm: switching from consecutive Claim Card to concise Keyword Pop.',
+          sourceDirective: directive,
+          evidenceResolved: false,
+          requiresHold: false,
+          placement: 'UPPER_THIRD',
+        };
+      }
+
+      return {
+        family: 'TALKING_HEAD',
+        template: 'TALKING_HEAD_FOCUS',
+        duration: Math.min(duration, 2.5),
+        params: {
+          type: 'TALKING_HEAD_FOCUS',
+          duration: Math.min(duration, 2.5),
+          framing: 'PRESENTER_CENTERED',
+          subtleZoom: true,
+        },
+        rationale: 'Balancing rhythm after Claim Card: clean presenter focus without graphic fatigue.',
+        sourceDirective: directive,
+        evidenceResolved: false,
+        requiresHold: false,
+        placement: 'FULL_SCREEN',
+      };
+    }
+
     return {
       family: 'KINETIC_TYPOGRAPHY',
       template: 'CLAIM_CARD',
