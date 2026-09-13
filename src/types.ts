@@ -426,6 +426,46 @@ export type VisualDecision =
   | 'TEXT_EMPHASIS'
   | 'SPLIT_SCREEN';
 
+export type VisualPurpose =
+  | 'CONTEXT'
+  | 'PROOF'
+  | 'DEMO'
+  | 'EXPLANATION'
+  | 'EMOTION'
+  | 'OFFER'
+  | 'CTA';
+
+export type PreferredVisual =
+  | 'BROLL'
+  | 'SCREENSHOT'
+  | 'METRIC'
+  | 'UI_DEMO'
+  | 'TEXT_EMPHASIS'
+  | 'PERSON'
+  | 'PRODUCT'
+  | 'DIAGRAM'
+  | 'NONE';
+
+export type VisualEvidenceMotionIntent =
+  | 'HOLD'
+  | 'HOLD_AND_HIGHLIGHT'
+  | 'SLOW_PUSH'
+  | 'TRACK'
+  | 'STATIC'
+  | 'CUT_FAST'
+  | 'NONE';
+
+export interface VisualEvidenceDirective {
+  visualPurpose: VisualPurpose;
+  preferredVisual: PreferredVisual;
+  requiredEvidence: string | null;
+  genericBrollAllowed: boolean;
+  emphasisTarget: string | null;
+  motionIntent: VisualEvidenceMotionIntent;
+  confidence: number; // 0..1
+  reason: string;
+}
+
 export interface SceneEditPlan {
   id: number;
   start: number;
@@ -506,6 +546,8 @@ export interface SceneEditPlan {
   composition_profile?: any;
   // Step 9.5B Central Meta Ads Editing Rhythm Plan
   editing_rhythm_plan?: EditingRhythmPlan;
+  // Visual Evidence Director
+  visual_evidence_directive?: VisualEvidenceDirective;
 }
 
 export interface StylePresetProfile {

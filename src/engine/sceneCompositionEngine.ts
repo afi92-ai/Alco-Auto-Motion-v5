@@ -428,31 +428,74 @@ export function evaluateSceneComposition(
   }
 
   // 7. DEFAULT / EXPLANATION / INSIGHT SCENE HIERARCHY
-  const defaultPrimary: PrimaryAttentionElement = hasTalkingHead
+  let defaultPrimary: PrimaryAttentionElement = hasTalkingHead
     ? 'TALENT_TALKING_HEAD'
     : (hasBroll ? 'RELEVANT_BROLL' : 'TALENT_TALKING_HEAD');
 
-  const defaultSecondary: SecondaryAttentionElement = hasUpperHeadline
+  let defaultSecondary: SecondaryAttentionElement = hasUpperHeadline
     ? 'UPPER_HEADLINE'
     : 'NONE';
+
+  let defaultCaptionTreatment: CaptionTreatment = 'NORMAL';
+  let defaultEvidencePriority: 'PRIMARY' | 'SECONDARY' | 'SUPPORT' | 'SUPPRESSED' = 'SUPPORT';
+  let defaultReason = 'Standard contextual pacing with authentic presenter focus and clean captions.';
+
+  // Check directive overrides for explanation / insight / default scenes
+  const directive = scene.visual_evidence_directive;
+  if (directive) {
+    if (directive.preferredVisual === 'METRIC') {
+      defaultPrimary = 'EVIDENCE_METRIC';
+      defaultSecondary = 'KEY_METRIC_CLAIM';
+      defaultEvidencePriority = 'PRIMARY';
+      defaultCaptionTreatment = 'SUBDUED';
+      defaultReason = `VisualEvidenceDirector: Numeric metric (${directive.requiredEvidence || 'metric'}) receives primary focal attention.`;
+    } else if (directive.preferredVisual === 'SCREENSHOT') {
+      defaultPrimary = 'EVIDENCE_SCREENSHOT';
+      defaultSecondary = 'KEY_METRIC_CLAIM';
+      defaultEvidencePriority = 'PRIMARY';
+      defaultCaptionTreatment = 'SUBDUED';
+      defaultReason = 'VisualEvidenceDirector: Screenshot evidence receives primary focal attention.';
+    } else if (directive.preferredVisual === 'UI_DEMO') {
+      defaultPrimary = 'PRODUCT_DEMO';
+      defaultSecondary = 'KEY_BENEFIT';
+      defaultEvidencePriority = 'PRIMARY';
+      defaultCaptionTreatment = 'COMPACT';
+      defaultReason = `VisualEvidenceDirector: UI demonstration (${directive.requiredEvidence || 'demo'}) receives primary focal attention.`;
+    } else if (directive.preferredVisual === 'DIAGRAM') {
+      defaultPrimary = 'EVIDENCE_CARD';
+      defaultSecondary = 'SOLUTION_HEADLINE';
+      defaultEvidencePriority = 'PRIMARY';
+      defaultCaptionTreatment = 'COMPACT';
+      defaultReason = `VisualEvidenceDirector: Structured diagram (${directive.requiredEvidence || 'framework'}) receives primary focal attention.`;
+    } else if (directive.preferredVisual === 'TEXT_EMPHASIS') {
+      defaultPrimary = 'HOOK_PATTERN_INTERRUPT';
+      defaultCaptionTreatment = 'EMPHASIZED';
+      defaultReason = 'VisualEvidenceDirector: Text emphasis dominates visual hierarchy.';
+    }
+  }
+
+  const suppressedForDefault: SuppressedElement[] = ['DOUBLE_UPPER_TEXT'];
+  if (directive && !directive.genericBrollAllowed) {
+    suppressedForDefault.push('GENERIC_BROLL');
+  }
 
   return applyAttentionBudget({
     primaryAttention: defaultPrimary,
     secondaryAttention: defaultSecondary,
     supportingElements: ['CAPTION_NORMAL'],
-    suppressedElements: ['DOUBLE_UPPER_TEXT'],
-    captionPriority: 'SECONDARY',
+    suppressedElements: suppressedForDefault,
+    captionPriority: directive?.preferredVisual === 'TEXT_EMPHASIS' ? 'PRIMARY' : 'SECONDARY',
     headlinePriority: hasUpperHeadline ? 'SECONDARY' : 'SUPPRESSED',
-    evidencePriority: 'SUPPORT',
-    brollPriority: hasBroll ? 'SECONDARY' : 'SUPPRESSED',
+    evidencePriority: defaultEvidencePriority,
+    brollPriority: (hasBroll && directive?.genericBrollAllowed !== false) ? 'SECONDARY' : 'SUPPRESSED',
     talkingHeadPriority: defaultPrimary === 'TALENT_TALKING_HEAD' ? 'PRIMARY' : 'SUPPORT',
     maxVisualLayers: 2,
     compositionDensity: 'BALANCED',
-    captionTreatment: 'NORMAL',
+    captionTreatment: defaultCaptionTreatment,
     headlineTreatment: hasUpperHeadline ? 'SHOW' : 'SUPPRESSED',
     hookFocalLockActive: false,
     hookFocalLockDurationSec: 0,
-    reason: 'Standard contextual pacing with authentic presenter focus and clean captions.',
+    reason: defaultReason,
   });
 }
 

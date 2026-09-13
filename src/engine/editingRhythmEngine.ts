@@ -94,6 +94,20 @@ export function calculateMinimumReadableDurationMs(
   const captionWords = (scene.caption || '').trim().split(/\s+/).filter(Boolean).length;
   const textDensityPaddingMs = Math.min(600, Math.max(0, (captionWords - 8) * 40));
 
+  // Visual Evidence Directive Priority
+  if (
+    scene.visual_evidence_directive?.motionIntent === 'HOLD_AND_HIGHLIGHT' ||
+    scene.visual_evidence_directive?.preferredVisual === 'METRIC'
+  ) {
+    return 2200 + textDensityPaddingMs;
+  }
+  if (
+    scene.visual_evidence_directive?.motionIntent === 'HOLD' ||
+    scene.visual_evidence_directive?.preferredVisual === 'UI_DEMO'
+  ) {
+    return 2400 + textDensityPaddingMs;
+  }
+
   // 1. Software Demo / Product Walkthrough
   if (adRole === 'demo' || scene.visualDecision === 'PRODUCT_DEMO' || evidenceType === 'SCREEN_DEMO') {
     return 2500 + textDensityPaddingMs;
@@ -403,6 +417,54 @@ export function calculateEditingRhythmPlan(params: RhythmEvaluationParams): Edit
   } else if (speechDensityLevel === 'SPARSE') {
     // Sparse speech: visual refresh can occur slightly more frequently (-200ms)
     targetVisualIntervalMs = Math.max(900, targetVisualIntervalMs - 200);
+  }
+
+  // =========================================================================
+  // VISUAL EVIDENCE DIRECTIVE MOTION INTENT INTEGRATION
+  // =========================================================================
+  const directive = scene.visual_evidence_directive;
+  if (directive) {
+    switch (directive.motionIntent) {
+      case 'HOLD_AND_HIGHLIGHT':
+        readabilityPriority = 'CRITICAL';
+        motionBudget = 'MINIMAL';
+        allowMidSceneRefresh = false;
+        refreshStrategy = 'EVIDENCE_HOLD';
+        preserveCompositionFocus = true;
+        reason += ` [VisualEvidenceDirector] HOLD_AND_HIGHLIGHT: preserving evidence focus for ${directive.requiredEvidence || 'metric'}.`;
+        break;
+
+      case 'HOLD':
+        readabilityPriority = 'HIGH';
+        motionBudget = 'LOW';
+        allowMidSceneRefresh = false;
+        if (refreshStrategy !== 'EVIDENCE_HOLD') {
+          refreshStrategy = 'NONE';
+        }
+        preserveCompositionFocus = true;
+        reason += ` [VisualEvidenceDirector] HOLD: steady framing for ${directive.preferredVisual}.`;
+        break;
+
+      case 'STATIC':
+        motionBudget = 'MINIMAL';
+        allowMidSceneRefresh = false;
+        refreshStrategy = 'NONE';
+        preserveCompositionFocus = true;
+        reason += ' [VisualEvidenceDirector] STATIC: avoiding unnecessary camera movement.';
+        break;
+
+      case 'CUT_FAST':
+        paceLevel = 'FAST';
+        targetVisualIntervalMs = Math.min(targetVisualIntervalMs, 1200);
+        reason += ' [VisualEvidenceDirector] CUT_FAST: rapid editorial cadence.';
+        break;
+
+      case 'SLOW_PUSH':
+        motionBudget = 'LOW';
+        preferredTransition = 'cut';
+        reason += ' [VisualEvidenceDirector] SLOW_PUSH: gentle push-in.';
+        break;
+    }
   }
 
   // =========================================================================

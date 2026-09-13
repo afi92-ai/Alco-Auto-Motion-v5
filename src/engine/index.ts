@@ -7,6 +7,7 @@ import {
   CaptionMode,
   CaptionPreset,
   ContentRole,
+  AdRole,
   StylePresetProfile,
   UserProofAsset,
   AssetUsageHistory,
@@ -26,6 +27,7 @@ import { analyzeTalkingHeadScene, analyzeProjectTalkingHeadDominance } from './t
 import { analyzeSceneVisualCorrection, summarizeProjectVisualQuality } from './lightingDirector';
 import { enrichSceneWithDecisionEngine } from './decisionEngine';
 import { recordAssetUsage } from './assetMatcher';
+import { directVisualEvidence } from './visualEvidenceDirector';
 
 export * from './scoringEngine';
 export * from './captionEngine';
@@ -46,6 +48,7 @@ export * from './assetMatcher';
 export * from './sceneCompositionEngine';
 export * from './editingRhythmEngine';
 export * from './creativeQualityGate';
+export * from './visualEvidenceDirector';
 export * from './renderCertification';
 
 export const STYLE_PROFILES: Record<ContentType, StylePresetProfile> = {
@@ -195,6 +198,17 @@ export function buildIntelligentEditPlan(
     );
     previousFatigue = scores.visual_fatigue_risk;
 
+    // 1.5 Visual Evidence Director (ALCO Auto Motion V5)
+    const visualEvidenceDirective = directVisualEvidence({
+      transcript: seg.text,
+      role,
+      adRole: ((analysis[i] as any)?.ad_role as AdRole) || (role as unknown as AdRole),
+      scores,
+      index: i,
+      totalScenes: segments.length,
+      contentType,
+    });
+
     // 2. Decide Context-Aware Motion & Camera Dynamics
     const nextRole = analysis[i + 1]?.content_role;
     const previousMotionScale = scenes[i - 1]?.motion_scale;
@@ -236,7 +250,8 @@ export function buildIntelligentEditPlan(
       segments.length,
       contentType,
       userAssets,
-      assetUsageHistory
+      assetUsageHistory,
+      { directive: visualEvidenceDirective }
     );
 
     // 5. Visual Evidence Engine Card Generation (Centralized Asset Relevance & Ranking Layer)
@@ -321,6 +336,7 @@ export function buildIntelligentEditPlan(
       talking_head_framing: talkingHeadFraming,
       visual_correction: visualCorrection,
       asset_match: brollDecision.matchResult,
+      visual_evidence_directive: visualEvidenceDirective,
     };
 
     const enrichedScene = enrichSceneWithDecisionEngine(rawScene, i, segments.length, !!(userAssets && userAssets.length > 0), scenes);

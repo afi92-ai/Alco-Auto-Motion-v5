@@ -6,6 +6,7 @@ import {
   AssetUsageHistory,
   VisualIntent,
   SceneIntelligenceScore,
+  VisualEvidenceDirective,
 } from '../types';
 
 /**
@@ -69,6 +70,7 @@ export interface MatchSceneContext {
   duration?: number;
   sceneIndex: number;
   scores?: SceneIntelligenceScore;
+  directive?: VisualEvidenceDirective;
 }
 
 export interface AssetMatcherOptions {
@@ -77,6 +79,7 @@ export interface AssetMatcherOptions {
   reusePenalty?: number;
   usageCountPenaltyRate?: number;
   preferredTypes?: UserProofAsset['type'][];
+  directive?: VisualEvidenceDirective;
 }
 
 /**
@@ -281,6 +284,63 @@ export function calculateAssetRelevanceScore(
 
   contextScore = Math.min(0.10, contextScore);
 
+  // --- D2. VISUAL EVIDENCE DIRECTIVE ALIGNMENT ---
+  const directive = scene.directive || options.directive;
+  let directiveScore = 0.0;
+  let genericBrollPenalty = 0.0;
+
+  if (directive) {
+    // 1. Preferred Visual Type Affinity
+    const pref = directive.preferredVisual;
+    let typeMatchesPref = false;
+    if (pref === 'METRIC' || pref === 'SCREENSHOT') {
+      if (asset.type === 'dashboard' || asset.type === 'screenshot') {
+        directiveScore += 0.15;
+        typeMatchesPref = true;
+      }
+    } else if (pref === 'UI_DEMO') {
+      if (asset.type === 'screen_recording' || asset.type === 'screenshot') {
+        directiveScore += 0.18;
+        typeMatchesPref = true;
+      }
+    } else if (pref === 'PRODUCT') {
+      if (asset.type === 'product') {
+        directiveScore += 0.15;
+        typeMatchesPref = true;
+      }
+    } else if (pref === 'DIAGRAM') {
+      if (asset.type === 'dashboard' || asset.type === 'screenshot') {
+        directiveScore += 0.12;
+        typeMatchesPref = true;
+      }
+    }
+
+    // 2. Required Evidence & Emphasis Target Token Matching
+    const evidenceText = [directive.requiredEvidence, directive.emphasisTarget].filter(Boolean).join(' ');
+    const evidenceTokens = extractNormalizedTokens(evidenceText);
+    const matchedEvidenceTokens: string[] = [];
+    if (evidenceTokens.length > 0 && allAssetTokens.length > 0) {
+      for (const eToken of evidenceTokens) {
+        if (allAssetTokens.includes(eToken) || allAssetTokens.some((a) => a.includes(eToken) || eToken.includes(a))) {
+          matchedEvidenceTokens.push(eToken);
+        }
+      }
+      if (matchedEvidenceTokens.length > 0) {
+        directiveScore += Math.min(0.25, matchedEvidenceTokens.length * 0.15);
+      }
+    }
+
+    // 3. Strict Generic B-Roll Suppression
+    // If genericBrollAllowed is false:
+    // Generic B-roll or non-evidence assets must NOT win over evidence-specific assets.
+    if (!directive.genericBrollAllowed) {
+      const isEvidenceQualified = typeMatchesPref || matchedEvidenceTokens.length > 0 || matchedKeywords.length >= 2;
+      if (!isEvidenceQualified) {
+        genericBrollPenalty = 0.40;
+      }
+    }
+  }
+
   // --- E. REUSE & FREQUENCY PENALTY ---
   let reusePenalty = 0.0;
   const usageRecord = history[asset.id];
@@ -302,8 +362,8 @@ export function calculateAssetRelevanceScore(
   }
 
   // Calculate raw final score bounded to 0.0 - 1.0
-  const grossScore = typeScore + keywordScore + roleScore + contextScore;
-  const netScore = Math.max(0.0, Math.min(1.0, Math.round((grossScore - reusePenalty) * 100) / 100));
+  const grossScore = typeScore + keywordScore + roleScore + contextScore + directiveScore;
+  const netScore = Math.max(0.0, Math.min(1.0, Math.round((grossScore - reusePenalty - genericBrollPenalty) * 100) / 100));
 
   // Synthesize human-readable reason
   const reasons: string[] = [];
@@ -313,6 +373,12 @@ export function calculateAssetRelevanceScore(
   reasons.push(`Type affinity: ${asset.type} for ${scene.role} (+${(typeScore + roleScore).toFixed(2)})`);
   if (contextScore > 0) {
     reasons.push(`Context bonus (+${contextScore.toFixed(2)})`);
+  }
+  if (directiveScore > 0) {
+    reasons.push(`Directive alignment (+${directiveScore.toFixed(2)})`);
+  }
+  if (genericBrollPenalty > 0) {
+    reasons.push(`Generic B-roll rejected (-${genericBrollPenalty.toFixed(2)})`);
   }
   if (reusePenalty > 0) {
     reasons.push(`Reuse penalty applied (-${reusePenalty.toFixed(2)})`);
@@ -370,7 +436,40 @@ export function matchAssetForScene(
   const bestCandidate = rankedCandidates[0];
 
   // 3. Threshold Evaluation
+  const directive = scene.directive || options.directive;
+
   if (bestCandidate && bestCandidate.score >= minThreshold) {
+    // If scene directive strictly prohibits generic B-roll, ensure asset is evidence-qualified
+    if (directive && !directive.genericBrollAllowed) {
+      const pref = directive.preferredVisual;
+      const typeMatchesPref =
+        (pref === 'METRIC' || pref === 'SCREENSHOT') && (bestCandidate.asset.type === 'dashboard' || bestCandidate.asset.type === 'screenshot') ||
+        (pref === 'UI_DEMO') && (bestCandidate.asset.type === 'screen_recording' || bestCandidate.asset.type === 'screenshot') ||
+        (pref === 'PRODUCT') && (bestCandidate.asset.type === 'product') ||
+        (pref === 'DIAGRAM') && (bestCandidate.asset.type === 'dashboard' || bestCandidate.asset.type === 'screenshot');
+
+      const hasKeywordMatch = bestCandidate.matchedKeywords.length > 0;
+      const evidenceText = [directive.requiredEvidence, directive.emphasisTarget].filter(Boolean).join(' ');
+      const evidenceTokens = extractNormalizedTokens(evidenceText);
+      const allAssetTokens = extractNormalizedTokens(`${bestCandidate.asset.name} ${bestCandidate.asset.label || ''}`);
+      const matchesEvidenceTokens = evidenceTokens.some((e) => allAssetTokens.includes(e));
+
+      if (!typeMatchesPref && !hasKeywordMatch && !matchesEvidenceTokens) {
+        return {
+          asset: null,
+          score: bestCandidate.score,
+          reason: `Generic asset #${bestCandidate.asset.name} rejected: scene directive requires specific visual evidence (${directive.requiredEvidence || directive.preferredVisual}). Fallback to clean A-roll/internal visuals.`,
+          matchedKeywords: [],
+          typeScore: 0,
+          keywordScore: 0,
+          roleScore: 0,
+          contextScore: 0,
+          reusePenalty: 0,
+          allRanked: rankedCandidates,
+        };
+      }
+    }
+
     return {
       asset: bestCandidate.asset,
       score: bestCandidate.score,

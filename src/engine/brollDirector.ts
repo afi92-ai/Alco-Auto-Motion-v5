@@ -7,6 +7,7 @@ import {
   UserProofAsset,
   AssetUsageHistory,
   AssetMatchResult,
+  VisualEvidenceDirective,
 } from '../types';
 import { matchAssetForScene } from './assetMatcher';
 
@@ -25,7 +26,7 @@ export function determineBrollDecision(
   contentType: ContentType,
   userAssets?: UserProofAsset[],
   history?: AssetUsageHistory,
-  options?: { minRelevanceScore?: number }
+  options?: { minRelevanceScore?: number; directive?: VisualEvidenceDirective }
 ): {
   intent: VisualIntent;
   broll: BRollItem | null;
@@ -137,12 +138,14 @@ export function determineBrollDecision(
       visualIntent: targetIntent,
       sceneIndex: index,
       scores,
+      directive: options?.directive,
     },
     userAssets,
     history,
     {
       ...options,
       preferredTypes,
+      directive: options?.directive,
     }
   );
 
