@@ -11,6 +11,7 @@ import {
   extractCtaContent,
   extractProductContent,
   extractClaimContent,
+  extractNetworkContent,
 } from './contentExtractor';
 import { buildNumberCounterParams } from './metrics/counter';
 import { buildPercentageGrowthParams } from './metrics/growth';
@@ -63,6 +64,7 @@ export function routeVisualTreatment(ctx: RouteTreatmentContext): VisualTreatmen
   const ctaContent = extractCtaContent(transcript, ctx.emphasisTarget);
   const productContent = extractProductContent(transcript, ctx.emphasisTarget);
   const claimContent = extractClaimContent(transcript, ctx.emphasisTarget);
+  const networkContent = extractNetworkContent(transcript, ctx.emphasisTarget);
 
   // 2. CTA MOMENT
   if (role === 'cta' || adRole === 'cta' || visualPurpose === 'CTA') {
@@ -351,14 +353,15 @@ export function routeVisualTreatment(ctx: RouteTreatmentContext): VisualTreatmen
       };
     }
 
-    // 7D. Ecosystem / Multi-feature
-    if (/INTEGRASI|FITUR|ALL-IN-ONE|ENGIN|EKOSISTEM/i.test(textUpper)) {
+    // 7D. Ecosystem / Multi-feature Icon Network
+    // Strictly requires valid extracted nodes (>= 3 distinct components)
+    if (networkContent.confidence >= 0.7 && networkContent.nodes.length >= 3) {
       return {
         family: 'ANIMATED_ILLUSTRATION',
         template: 'ICON_NETWORK',
-        duration: Math.min(duration, 3.0),
-        params: buildIconNetworkParams(ctx),
-        rationale: 'Feature network/ecosystem detected: deploying Icon Network illustration.',
+        duration: Math.min(duration, 3.2),
+        params: buildIconNetworkParams(ctx, networkContent),
+        rationale: 'Connected system/ecosystem nodes extracted from transcript: deploying dynamic Icon Network.',
         sourceDirective: directive,
         evidenceResolved: false,
         requiresHold: false,

@@ -77,6 +77,15 @@ export interface ExtractedClaimContent {
   confidence: number;
 }
 
+export interface ExtractedNetworkContent {
+  centerLabel: string | null;
+  nodes: Array<{
+    label: string;
+    confidence: number;
+  }>;
+  confidence: number;
+}
+
 // -------------------------------------------------------------
 // 1. METRIC CONTENT EXTRACTOR
 // -------------------------------------------------------------
@@ -631,6 +640,157 @@ export function extractClaimContent(transcript: string, emphasisTarget?: string 
     title: emphasisTarget ? emphasisTarget.toUpperCase() : 'POIN UTAMA',
     claim: shortClaim || 'Fokus Pada Solusi',
     confidence: 0.85,
+  };
+}
+
+// -------------------------------------------------------------
+// 9. NETWORK / ECOSYSTEM CONTENT EXTRACTOR
+// -------------------------------------------------------------
+
+export function extractNetworkContent(
+  transcript: string,
+  emphasisTarget?: string | null
+): ExtractedNetworkContent {
+  if (!transcript || typeof transcript !== 'string') {
+    return { centerLabel: null, nodes: [], confidence: 0 };
+  }
+
+  const text = transcript.trim();
+  const textUpper = text.toUpperCase();
+
+  // Keyword check: must have relationship / ecosystem indicator
+  const hasRelationshipKeyword =
+    /menghubungkan|menggabungkan|terhubung|terintegrasi|terdiri\s+dari|mencakup|meliputi|memadukan|mengintegrasikan|mengoneksikan|ekosistem|ecosystem|integrasi|integration|connect|integrate|include|consist|module|feature|fitur|modul/i.test(
+      text
+    );
+
+  if (!hasRelationshipKeyword) {
+    return { centerLabel: null, nodes: [], confidence: 0 };
+  }
+
+  // Trailing ecosystem / wrapper phrases to strip from the items string
+  const cleanTrailingWrapper = (raw: string): string => {
+    return raw
+      .replace(
+        /(?:dalam|ke\s+dalam|in|into)\s+(?:satu|1|sebuah|a\s+single)?\s*(?:ekosistem|ecosystem|sistem|platform|kesatuan|dashboard|alur|tempat|place|hub)[^.]*/i,
+        ''
+      )
+      .replace(/(?:secara|with)\s+(?:otomatis|realtime|mudah|seamless|langsung|automated)[^.]*/i, '')
+      .replace(/[.!?;]+$/, '')
+      .trim();
+  };
+
+  let candidateSubject: string | null = null;
+  let itemsString: string | null = null;
+
+  // Pattern 1: <Subject> <verb> <items>
+  const verbMatch = text.match(
+    /(?:^|\.\s*|;\s*)([A-Za-z0-9\s_-]+?)\s+(?:menghubungkan|menggabungkan|mengintegrasikan|mengoneksikan|memadukan|terdiri\s+dari|mencakup|meliputi|connects?|integrates?|combines?|includes?|consists?\s+of)\s+(.+)/i
+  );
+
+  if (verbMatch) {
+    candidateSubject = verbMatch[1].trim();
+    itemsString = cleanTrailingWrapper(verbMatch[2]);
+  }
+
+  // Pattern 2: Passive / descriptive "terhubung / terintegrasi dengan / antara <items>"
+  if (!itemsString) {
+    const passiveMatch = text.match(
+      /(?:^|\.\s*|;\s*)([A-Za-z0-9\s_-]+?)?\s*(?:terhubung|terintegrasi|terkoneksi)\s+(?:dengan|antara|melalui)?\s*(.+)/i
+    );
+    if (passiveMatch) {
+      candidateSubject = passiveMatch[1]?.trim() || null;
+      itemsString = cleanTrailingWrapper(passiveMatch[2]);
+    }
+  }
+
+  // Pattern 3: Colon format: e.g. "Ekosistem ALCO: riset, konten, iklan, analytics" or "Fitur terintegrasi: A, B, C, D"
+  if (!itemsString) {
+    const colonMatch = text.match(
+      /(?:ekosistem|fitur|modul|integrasi|ecosystem|features|modules)\s+(?:terintegrasi\s+)?(?:dari\s+)?([A-Za-z0-9\s_-]+)?:\s*(.+)/i
+    );
+    if (colonMatch) {
+      candidateSubject = colonMatch[1]?.trim() || null;
+      itemsString = cleanTrailingWrapper(colonMatch[2]);
+    }
+  }
+
+  if (!itemsString) {
+    return { centerLabel: null, nodes: [], confidence: 0 };
+  }
+
+  // Helper to clean individual items
+  const cleanItem = (raw: string): string | null => {
+    let s = raw.trim();
+    // Remove leading/trailing conjunctions or noise
+    s = s.replace(/^(?:dan|and|serta|juga|dengan|fitur|modul|seperti|yaitu|yakni|berupa)\s+/i, '');
+    s = s.replace(/\s+(?:dan|and|serta|juga|dll|dsb|etc|lainnya)$/i, '');
+    s = s.replace(/^[-•*#\d.]+\s*/, ''); // strip bullet numbers
+    s = s.replace(/^[,"'“‘(]+|[,"'”’)]+$/g, '').trim();
+
+    if (!s || s.length < 2) return null;
+    // Discard generic non-component phrases
+    if (/^(dan|and|serta|juga|dll|dsb|etc|lainnya|sebagainya|semua)$/i.test(s)) return null;
+
+    // Keep length reasonable (max 24 chars)
+    if (s.length > 24) s = s.slice(0, 24).trim();
+    return s.toUpperCase();
+  };
+
+  // Split items by commas, " dan ", " and ", " & ", " serta ", or semicolons
+  const rawParts = itemsString.split(/[,;]|\s+dan\s+|\s+and\s+|\s+&\s+|\s+serta\s+/i);
+  const distinctLabels: string[] = [];
+  const seen = new Set<string>();
+
+  for (const part of rawParts) {
+    const cleaned = cleanItem(part);
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      distinctLabels.push(cleaned);
+    }
+  }
+
+  // Network extraction is ONLY valid if there are at least 3 distinct nodes
+  if (distinctLabels.length < 3) {
+    return { centerLabel: null, nodes: [], confidence: 0 };
+  }
+
+  // Cap at maximum 6 nodes with highest prominence (order in transcript)
+  const finalNodes = distinctLabels.slice(0, 6).map((label) => ({
+    label,
+    confidence: 0.9,
+  }));
+
+  // Determine center node label with priority:
+  // 1. Explicit system/product name from transcript before relationship verb
+  // 2. emphasisTarget
+  // 3. Generic non-factual label "SISTEM" (Neutral UI fallback - do not invent ALCO unless transcript has it)
+  let centerLabel: string = 'SISTEM';
+
+  if (candidateSubject) {
+    const rawSubj = candidateSubject.trim();
+    if (/ALCO/i.test(rawSubj) || /ALCO/i.test(textUpper)) {
+      centerLabel = 'ALCO';
+    } else if (/^(?:sistem|system)(?:\s+ini|\s+kami|\s+tersebut)?$/i.test(rawSubj)) {
+      centerLabel = 'SISTEM';
+    } else if (/^(?:platform)(?:\s+ini|\s+kami|\s+tersebut)?$/i.test(rawSubj)) {
+      centerLabel = 'PLATFORM';
+    } else if (/^(?:tool|tools|aplikasi|app|software)(?:\s+ini|\s+kami|\s+tersebut)?$/i.test(rawSubj)) {
+      centerLabel = rawSubj.split(/\s+/)[0].toUpperCase();
+    } else if (rawSubj.length >= 2 && rawSubj.length <= 20) {
+      const cleanSubj = rawSubj.replace(/^(?:sebuah|suatu|kami|kita|dengan)\s+/i, '').trim();
+      centerLabel = cleanSubj.toUpperCase();
+    }
+  } else if (emphasisTarget && emphasisTarget.trim().length >= 2) {
+    centerLabel = emphasisTarget.trim().toUpperCase();
+  } else if (/ALCO/i.test(textUpper)) {
+    centerLabel = 'ALCO';
+  }
+
+  return {
+    centerLabel,
+    nodes: finalNodes,
+    confidence: 0.9,
   };
 }
 

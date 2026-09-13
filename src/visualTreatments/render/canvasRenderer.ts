@@ -289,6 +289,86 @@ export function drawVisualTreatmentOnCanvas(
       break;
     }
 
+    case 'ICON_NETWORK': {
+      const cardW = 460;
+      const isMultiRow = p.orbitNodes.length > 3;
+      const cardH = isMultiRow ? 135 : 100;
+      const cardX = (720 - cardW) / 2;
+      const cardY = isMultiRow ? 175 : 195;
+
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.95)';
+      ctx.strokeStyle = '#6366f1';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, [16]);
+      ctx.fill();
+      ctx.stroke();
+
+      // Header: HUB INTEGRASI & Center Node Label
+      ctx.fillStyle = '#a5b4fc';
+      ctx.font = '900 10px "Montserrat", sans-serif';
+      ctx.fillText('HUB INTEGRASI', cardX + 18, cardY + 22);
+
+      // Center Node Badge Pill
+      ctx.fillStyle = 'rgba(99, 102, 241, 0.25)';
+      ctx.strokeStyle = '#6366f1';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(cardX + cardW - 140, cardY + 10, 122, 20, [10]);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#e0e7ff';
+      ctx.font = '900 10px "Montserrat", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.centerNode.label.slice(0, 14), cardX + cardW - 79, cardY + 24);
+      ctx.textAlign = 'left';
+
+      // Orbit Nodes Layout (3 to 6 nodes)
+      const nodeCount = p.orbitNodes.length;
+      if (nodeCount <= 3) {
+        const itemW = (cardW - 40 - Math.max(0, nodeCount - 1) * 12) / Math.max(1, nodeCount);
+        p.orbitNodes.forEach((node, i) => {
+          const nx = cardX + 20 + i * (itemW + 12);
+          const ny = cardY + 38;
+          ctx.fillStyle = node.highlight ? 'rgba(99, 102, 241, 0.25)' : 'rgba(30, 41, 59, 0.7)';
+          ctx.strokeStyle = node.highlight ? '#818cf8' : '#475569';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(nx, ny, itemW, 46, [10]);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = node.highlight ? '#ffffff' : '#cbd5e1';
+          ctx.font = '900 11px "Montserrat", sans-serif';
+          ctx.fillText(node.label.slice(0, 14), nx + 10, ny + 28);
+        });
+      } else {
+        const cols = nodeCount === 4 ? 2 : 3;
+        const itemW = (cardW - 40 - (cols - 1) * 10) / cols;
+        const itemH = 38;
+        p.orbitNodes.forEach((node, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const nx = cardX + 20 + col * (itemW + 10);
+          const ny = cardY + 38 + row * (itemH + 8);
+
+          ctx.fillStyle = node.highlight ? 'rgba(99, 102, 241, 0.25)' : 'rgba(30, 41, 59, 0.7)';
+          ctx.strokeStyle = node.highlight ? '#818cf8' : '#475569';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(nx, ny, itemW, itemH, [8]);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = node.highlight ? '#ffffff' : '#cbd5e1';
+          ctx.font = '900 10px "Montserrat", sans-serif';
+          ctx.fillText(node.label.slice(0, 14), nx + 8, ny + 24);
+        });
+      }
+      break;
+    }
+
     case 'PROCESS_STEPS': {
       const cardW = 440;
       const cardH = 115;

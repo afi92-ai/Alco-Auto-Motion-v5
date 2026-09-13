@@ -12,6 +12,7 @@ import {
   extractCtaContent,
   extractProductContent,
   extractClaimContent,
+  extractNetworkContent,
 } from './contentExtractor';
 import { routeVisualTreatment } from './router';
 import { RouteTreatmentContext } from './types';
@@ -280,6 +281,135 @@ export function runVisualTreatmentTests() {
       process12.confidence >= 0.8,
     'Scenario 12: Process steps extracted reliably',
     process12
+  );
+
+  // -------------------------------------------------------------------------
+  // DYNAMIC ICON NETWORK TESTS (TEST A - F)
+  // -------------------------------------------------------------------------
+
+  // Test A: "ALCO menghubungkan riset, konten, iklan, dan analytics"
+  const networkA = extractNetworkContent('ALCO menghubungkan riset, konten, iklan, dan analytics dalam satu ecosystem.');
+  assert(
+    networkA.centerLabel === 'ALCO' &&
+      networkA.nodes.length === 4 &&
+      networkA.nodes[0].label === 'RISET' &&
+      networkA.nodes[1].label === 'KONTEN' &&
+      networkA.nodes[2].label === 'IKLAN' &&
+      networkA.nodes[3].label === 'ANALYTICS' &&
+      networkA.confidence >= 0.7,
+    'Test A: Extractor successfully parses explicit center ALCO and 4 nodes from transcript',
+    networkA
+  );
+
+  const routePlanA = routeVisualTreatment(
+    createMockContext({
+      role: 'explanation',
+      visualPurpose: 'EXPLANATION',
+      transcript: 'ALCO menghubungkan riset, konten, iklan, dan analytics dalam satu ecosystem.',
+    })
+  );
+  assert(
+    routePlanA.family === 'ANIMATED_ILLUSTRATION' &&
+      routePlanA.template === 'ICON_NETWORK' &&
+      (routePlanA.params as any).centerNode.label === 'ALCO' &&
+      (routePlanA.params as any).orbitNodes.length === 4,
+    'Test A2: Router selects ICON_NETWORK with extracted ALCO center and 4 nodes',
+    routePlanA
+  );
+
+  // Test B: "Sistem ini menggabungkan CRM, WhatsApp, website dan database."
+  const networkB = extractNetworkContent('Sistem ini menggabungkan CRM, WhatsApp, website dan database.');
+  assert(
+    networkB.centerLabel === 'SISTEM' &&
+      networkB.nodes.length === 4 &&
+      networkB.nodes.some(n => n.label === 'CRM') &&
+      networkB.nodes.some(n => n.label === 'WHATSAPP') &&
+      networkB.nodes.some(n => n.label === 'WEBSITE') &&
+      networkB.nodes.some(n => n.label === 'DATABASE'),
+    'Test B: Extractor extracts SISTEM center and CRM, WhatsApp, website, database nodes',
+    networkB
+  );
+
+  const routePlanB = routeVisualTreatment(
+    createMockContext({
+      role: 'explanation',
+      visualPurpose: 'EXPLANATION',
+      transcript: 'Sistem ini menggabungkan CRM, WhatsApp, website dan database.',
+    })
+  );
+  assert(
+    routePlanB.family === 'ANIMATED_ILLUSTRATION' &&
+      routePlanB.template === 'ICON_NETWORK' &&
+      (routePlanB.params as any).centerNode.label === 'SISTEM' &&
+      (routePlanB.params as any).orbitNodes.length === 4,
+    'Test B2: Router routes to ICON_NETWORK with SISTEM center and 4 extracted nodes',
+    routePlanB
+  );
+
+  // Test C: "Platform ini sangat mudah digunakan." -> Must NOT select ICON_NETWORK
+  const networkC = extractNetworkContent('Platform ini sangat mudah digunakan.');
+  assert(
+    networkC.confidence === 0 && networkC.nodes.length === 0,
+    'Test C: Transcript without components yields 0 network confidence and 0 nodes',
+    networkC
+  );
+
+  const routePlanC = routeVisualTreatment(
+    createMockContext({
+      role: 'explanation',
+      visualPurpose: 'EXPLANATION',
+      transcript: 'Platform ini sangat mudah digunakan.',
+    })
+  );
+  assert(
+    routePlanC.template !== 'ICON_NETWORK',
+    'Test C2: Router rejects ICON_NETWORK when no nodes are extracted',
+    routePlanC.template
+  );
+
+  // Test D: "Ekosistem ini sangat bagus." -> Keyword alone is NOT enough
+  const networkD = extractNetworkContent('Ekosistem ini sangat bagus.');
+  assert(
+    networkD.confidence === 0 && networkD.nodes.length === 0,
+    'Test D: Keyword "ekosistem" alone without component list yields 0 network confidence',
+    networkD
+  );
+
+  const routePlanD = routeVisualTreatment(
+    createMockContext({
+      role: 'explanation',
+      visualPurpose: 'EXPLANATION',
+      transcript: 'Ekosistem ini sangat bagus.',
+    })
+  );
+  assert(
+    routePlanD.template !== 'ICON_NETWORK',
+    'Test D2: Router rejects ICON_NETWORK when keyword exists without 3+ nodes',
+    routePlanD.template
+  );
+
+  // Test E: Variable node count (7 components) -> Capped at maximum 6 nodes
+  const networkE = extractNetworkContent('Sistem terdiri dari riset, konten, ads, analytics, CRM, website dan database.');
+  assert(
+    networkE.nodes.length === 6 && networkE.confidence >= 0.7,
+    'Test E: Extractor caps extracted nodes at maximum 6 nodes',
+    networkE
+  );
+
+  // Test F: Zero hardcoded fallback nodes
+  const routePlanF = routeVisualTreatment(
+    createMockContext({
+      role: 'explanation',
+      visualPurpose: 'EXPLANATION',
+      transcript: 'Sistem ini menggabungkan CRM, WhatsApp, website dan database.',
+    })
+  );
+  const labelsF = (routePlanF.params as any).orbitNodes.map((n: any) => n.label);
+  const containsHardcoded = labelsF.includes('ANALISIS') || labelsF.includes('PROSES') || labelsF.includes('EKSEKUSI') || labelsF.includes('HASIL');
+  assert(
+    !containsHardcoded,
+    'Test F: Generated ICON_NETWORK contains zero hardcoded nodes (ANALISIS, PROSES, EKSEKUSI, HASIL)',
+    labelsF
   );
 
   console.log(`\nTEST SUMMARY: ${passed} passed, ${failed} failed.`);

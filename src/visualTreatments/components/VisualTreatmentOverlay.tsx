@@ -14,6 +14,14 @@ import {
   Layers,
   BarChart3,
   ExternalLink,
+  Search,
+  FileText,
+  Database,
+  Globe,
+  Users,
+  MessageSquare,
+  CreditCard,
+  Circle,
 } from 'lucide-react';
 import { VisualTreatmentPlan } from '../types';
 
@@ -233,6 +241,71 @@ export const VisualTreatmentOverlay: React.FC<VisualTreatmentOverlayProps> = ({
                 >
                   <span className="text-[8px] font-black font-mono block">0{s.stepNumber}</span>
                   <p className="text-[9px] font-bold leading-tight truncate">{s.title}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 7B. ICON_NETWORK */}
+      {p.type === 'ICON_NETWORK' && (
+        <div className="w-full max-w-[340px] bg-slate-950/95 border-2 border-indigo-400 p-3 rounded-2xl shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[9px] font-black text-indigo-300 uppercase tracking-wider">
+                HUB INTEGRASI
+              </span>
+            </div>
+            <div className="bg-indigo-500/20 border border-indigo-400 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+              <span className="text-[10px] font-black text-indigo-100 uppercase tracking-tight truncate max-w-[140px]">
+                {p.centerNode.label}
+              </span>
+            </div>
+          </div>
+
+          <div
+            className={`grid gap-1.5 ${
+              p.orbitNodes.length <= 3
+                ? 'grid-cols-3'
+                : p.orbitNodes.length === 4
+                ? 'grid-cols-2'
+                : 'grid-cols-3'
+            }`}
+          >
+            {p.orbitNodes.map((node, i) => {
+              const renderIcon = (iconName: string) => {
+                switch (iconName) {
+                  case 'SEARCH': return <Search className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'FILE_TEXT': return <FileText className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'TARGET': return <Target className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'CHART': return <BarChart3 className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'DATABASE': return <Database className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'GLOBE': return <Globe className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'USERS': return <Users className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'SPARKLES': return <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'MESSAGE': return <MessageSquare className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'LAYERS': return <Layers className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'CREDIT_CARD': return <CreditCard className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  case 'SHIELD': return <Shield className="w-3 h-3 text-indigo-400 shrink-0" />;
+                  default: return <Circle className="w-2.5 h-2.5 text-indigo-400 shrink-0" />;
+                }
+              };
+
+              return (
+                <div
+                  key={i}
+                  className={`p-2 rounded-xl border flex items-center gap-1.5 transition-all ${
+                    node.highlight
+                      ? 'bg-indigo-500/20 border-indigo-400 text-indigo-100 shadow-xs'
+                      : 'bg-slate-900/70 border-slate-800 text-slate-300'
+                  }`}
+                >
+                  {renderIcon(node.icon)}
+                  <span className="text-[9px] font-bold uppercase truncate">
+                    {node.label}
+                  </span>
                 </div>
               );
             })}
