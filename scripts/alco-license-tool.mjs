@@ -137,7 +137,7 @@ if (command === 'sign') {
     expiresAt: licenseType === 'lifetime' ? null : new Date(Date.now() + 365 * 86400000).toISOString(),
     metadata: {
       ecosystem: 'ALCO',
-      generatedBy: 'ALCO License Authority Tool v2.2',
+      generatedBy: 'ALCO License Authority Tool v2.4',
     },
   };
 
@@ -156,7 +156,7 @@ if (command === 'sign') {
   process.exit(0);
 }
 
-console.log('ALCO License Tool v2.2');
+console.log('ALCO License Tool v2.4');
 console.log('Commands:');
 console.log('  node scripts/alco-license-tool.mjs keygen');
 console.log('  node scripts/alco-license-tool.mjs inspect <code-string>');

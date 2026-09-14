@@ -20,6 +20,7 @@ interface AlcoLicenseModalProps {
   onClose: () => void;
   licenseStatus: AlcoLicenseStatus | null;
   onRefreshStatus: () => void;
+  isGate?: boolean;
 }
 
 export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
@@ -27,6 +28,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
   onClose,
   licenseStatus,
   onRefreshStatus,
+  isGate = false,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'status' | 'request' | 'activate'>('status');
 
@@ -173,23 +175,27 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold tracking-tight text-[var(--fg-app)]">
-                  ALCO License Center
+                  {isGate && !isActivated ? 'ALCO License Gate' : 'ALCO License Center'}
                 </h2>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  Standard v2.2
+                  Standard v2.4
                 </span>
               </div>
               <p className="text-xs text-[var(--muted-foreground)]">
-                Protokol Lisensi Resmi Aladzan Corpora Ecosystem
+                {isGate && !isActivated
+                  ? 'Aktivasi Lisensi Diperlukan — Aladzan Corpora Ecosystem'
+                  : 'Protokol Lisensi Resmi Aladzan Corpora Ecosystem'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--fg-app)] hover:bg-[var(--secondary)] transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!isGate && (
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--fg-app)] hover:bg-[var(--secondary)] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Navigation Tabs */}
@@ -295,7 +301,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                   {licenseStatus?.deviceId || 'Memuat...'}
                 </div>
                 <p className="text-[11px] text-[var(--muted-foreground)] leading-relaxed">
-                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.2.
+                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.4.
                 </p>
               </div>
 

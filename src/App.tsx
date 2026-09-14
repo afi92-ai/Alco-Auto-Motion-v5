@@ -14,11 +14,13 @@ import { SAMPLE_VIDEOS } from './data/sampleVideos';
 import { useAiWorkflow } from './hooks/useAiWorkflow';
 import { useTheme } from './hooks/useTheme';
 import { useAlcoLicense } from './hooks/useAlcoLicense';
+import { ShieldCheck, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const {
     licenseStatus,
+    isLoading: isLicenseLoading,
     isLicenseModalOpen,
     setIsLicenseModalOpen,
     refreshStatus: refreshLicenseStatus,
@@ -179,7 +181,51 @@ export default function App() {
   const activeVideoUrl = getActiveVideoSource();
   const activeVideoFile = videoFile || uploadedFile;
 
-  // User starts on Upload page and chooses to Upload Video or Try Demo (no auto-run)
+  // ============================================================================
+  // ALCO APP STANDARD v2.4 - Section 15A: Startup License Gate (Mandatory)
+  // App Start → Load Stored License → Verify Signature → Match App ID/Device ID
+  // → Check Expiration → Decide Access
+  // Fresh Install + No License → Activation Screen Only (BLOKIR akses workspace)
+  // ============================================================================
+  if (isLicenseLoading) {
+    return (
+      <div className="h-screen w-screen bg-[var(--bg-app)] text-[var(--fg-app)] flex flex-col items-center justify-center p-6 select-none font-sans">
+        <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-blue-500 animate-pulse shadow-lg">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+          <div>
+            <h1 className="text-base font-bold tracking-tight text-[var(--fg-app)]">
+              ALCO Auto Motion
+            </h1>
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">
+              Memverifikasi lisensi digital Ed25519 & Device ID...
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-blue-400 font-mono mt-1">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>ALCO License Gate v2.4</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If unactivated / invalid / expired, display Activation Screen Only and BLOCK workspace
+  if (!licenseStatus?.active) {
+    return (
+      <div className="h-screen w-screen bg-[var(--bg-app)] text-[var(--fg-app)] flex flex-col items-center justify-center p-4 select-none font-sans relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
+        <AlcoLicenseModal
+          isOpen={true}
+          isGate={true}
+          onClose={() => {}}
+          licenseStatus={licenseStatus}
+          onRefreshStatus={refreshLicenseStatus}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--fg-app)] flex flex-col font-sans selection:bg-blue-600 selection:text-white">
@@ -310,12 +356,13 @@ export default function App() {
         />
       )}
 
-      {/* Official ALCO App Standard v2.2 License Modal */}
+      {/* Official ALCO App Standard v2.4 License Modal */}
       <AlcoLicenseModal
         isOpen={isLicenseModalOpen}
         onClose={() => setIsLicenseModalOpen(false)}
         licenseStatus={licenseStatus}
         onRefreshStatus={refreshLicenseStatus}
+        isGate={false}
       />
     </div>
   );

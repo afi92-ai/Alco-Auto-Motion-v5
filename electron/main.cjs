@@ -93,7 +93,7 @@ function findFreeLocalhostPort() {
 
 /**
  * Query /api/health to verify if server is alive, responding, and proves official app identity.
- * ALCO APP STANDARD v2.2 Section 5A:
+ * ALCO APP STANDARD v2.4 Section 5A:
  * "health check HTTP 200 saja TIDAK cukup; health response harus membuktikan identitas
  * aplikasi yang benar, misalnya app: 'alco-auto-motion'; jika response berasal dari
  * aplikasi lain, jangan reuse server tersebut."

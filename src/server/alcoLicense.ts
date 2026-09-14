@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.2 - License System Implementation
+ * ALCO APP STANDARD v2.4 - License System Implementation
  * Master Protocol for Aladzan Corpora Ecosystem
  *
  * Implements:
