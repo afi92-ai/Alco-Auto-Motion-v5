@@ -8,7 +8,9 @@ const fs = require('fs');
 // Global references
 let mainWindow = null;
 let serverProcess = null;
-let serverPort = Number(process.env.PORT) || 3000;
+const DEFAULT_DEV_PORT = 3104;
+const DEFAULT_PROD_PORT = 3000;
+let serverPort = Number(process.env.PORT) || (app.isPackaged ? DEFAULT_PROD_PORT : DEFAULT_DEV_PORT);
 let serverLogs = [];
 const MAX_LOG_LINES = 50;
 

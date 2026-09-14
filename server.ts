@@ -36,7 +36,24 @@ const execFileAsync = promisify(execFile);
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+
+const DEFAULT_DEV_PORT = 3104;
+const DEFAULT_PROD_PORT = 3000;
+
+function resolveServerPort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = Number(process.argv[portArgIndex + 1]);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  if (process.env.PORT) {
+    const parsed = Number(process.env.PORT);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return process.env.NODE_ENV === 'production' ? DEFAULT_PROD_PORT : DEFAULT_DEV_PORT;
+}
+
+const PORT = resolveServerPort();
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Temporary upload directory for direct streaming multipart form video uploads
