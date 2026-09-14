@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import {
@@ -1729,9 +1728,11 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   next(err);
 });
 
-// Setup Vite middleware
+// Setup Vite middleware in development or static serving in production (ALCO APP STANDARD v2.6 Section 5B)
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    // Dynamic import Vite ONLY when running in development mode
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

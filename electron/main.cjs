@@ -472,9 +472,7 @@ function renderErrorHtml(port, errorDetail, logs) {
  * Create and configure BrowserWindow
  */
 function createMainWindow() {
-  const iconPath = fs.existsSync(path.join(__dirname, '../build/icon.ico'))
-    ? path.join(__dirname, '../build/icon.ico')
-    : path.join(__dirname, '../public/icon.ico');
+  const iconPath = path.join(__dirname, '../public/icon.ico');
 
   mainWindow = new BrowserWindow({
     width: 1280,
