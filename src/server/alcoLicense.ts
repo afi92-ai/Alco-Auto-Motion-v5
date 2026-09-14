@@ -1,21 +1,18 @@
 /**
- * ALCO APP STANDARD v2.6 - License System Implementation
- * Master Protocol for Aladzan Corpora Ecosystem
+ * ALCO LICENSE STANDARD v1.0 & ALCO APP STANDARD v2.6 - License System Implementation
+ * Master Protocol for Aladzan Corpora Ecosystem (Source of Truth: ALCO License Generator)
  *
  * Implements:
- * - Section 10: Request Code v2 (ALCO-REQ-v2.<BASE64URL>.<CRC16>)
- * - Section 11: Fail-Closed Request Code Validation
- * - Section 12: License Payload v1.0 Schema Validation
- * - Section 13: Deterministic/Canonical JSON Representation
- * - Section 14: Ed25519 Signature Verification with Authority Public Key
- * - Section 14A: Strict License Wire Format Contract (128 HEX chars signature)
- * - Section 14B: Official ALCO Authority Public Key Hard Contract
- * - Section 15: Local License Verification (Fail-Closed)
- * - Section 15A: Startup License Gate (Mandatory)
- * - Section 15B: License Activation UX Flow
- * - Section 16 & 17: Strict App & Device ID Binding
- * - Section 19 & 20: Persistent User Data Storage Across Updates
- * - Section 23: Diagnostic Logging without Secrets Leak
+ * - Section 3: Official Authority Public Key Hard Contract (Ed25519: 7a8e99b9ba45bc9f8847bc9fc4952a87b7fa22a3b0c09a5b22ed939de0ed5162)
+ * - Section 4: Request Code Protocol v2 (ALCO-REQ-v2.<BASE64URL_PAYLOAD>.<CHECKSUM>)
+ * - Section 4.2: Payload Serialization: Payload Object → JSON.stringify → UTF-8 → Base64URL
+ * - Section 4.3: Checksum Contract: Calculated ONLY from Base64URL payload string
+ * - Section 4.4: Official Checksum Algorithm: Reflected CRC with polynomial 0xA001 (initial 0xFFFF)
+ * - Section 5: Request Code Compatibility Test
+ * - Section 6: Strict License Code Wire Format (ALCO-LIC-v1.<BASE64URL_CANONICAL_PAYLOAD>.<SIGNATURE_HEX>)
+ * - Section 7: Local License Verification (Fail-Closed)
+ * - Section 8: License Activation UX Flow & Startup License Gate
+ * - Section 9: License Persistence Across Updates
  */
 
 import crypto from 'crypto';
@@ -38,24 +35,28 @@ import type {
 import { getAlcoDeviceId, isValidAlcoDeviceId } from './alcoDevice.ts';
 
 /**
- * Standard CRC16-CCITT implementation (Polynomial 0x1021, Initial 0xFFFF)
- * Section 10: Used exclusively for copy/paste transmission corruption detection.
+ * ALCO LICENSE STANDARD v1.0 - Section 4.4: Official Checksum Algorithm
+ * Standard Reflected CRC with polynomial 0xA001, initial value 0xFFFF.
+ * Matches `calculateChecksum()` in official ALCO License Generator request-code.ts.
+ * Output: Exactly 4 uppercase hexadecimal characters.
  */
-export function crc16Ccitt(str: string): string {
+export function calculateChecksum(input: string): string {
   let crc = 0xffff;
-  for (let i = 0; i < str.length; i++) {
-    const byte = str.charCodeAt(i) & 0xff;
-    crc ^= byte << 8;
+  for (let i = 0; i < input.length; i++) {
+    crc ^= input.charCodeAt(i) & 0xff;
     for (let j = 0; j < 8; j++) {
-      if ((crc & 0x8000) !== 0) {
-        crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      if ((crc & 1) !== 0) {
+        crc = (crc >>> 1) ^ 0xa001;
       } else {
-        crc = (crc << 1) & 0xffff;
+        crc = crc >>> 1;
       }
     }
   }
-  return crc.toString(16).toUpperCase().padStart(4, '0');
+  return (crc & 0xffff).toString(16).toUpperCase().padStart(4, '0');
 }
+
+/** Backward compatibility alias */
+export const crc16Ccitt = calculateChecksum;
 
 /**
  * Deterministic / Canonical JSON representation (Section 13)
@@ -81,8 +82,10 @@ export function canonicalizeJson(obj: unknown): string {
 }
 
 /**
- * Generate official Request Code v2 (Section 10)
- * Format: ALCO-REQ-v2.<BASE64URL_PAYLOAD>.<CRC16>
+ * Generate official Request Code v2 (ALCO LICENSE STANDARD v1.0 Section 4)
+ * Format: ALCO-REQ-v2.<BASE64URL_PAYLOAD>.<CHECKSUM>
+ * Serialization: Payload Object → JSON.stringify → UTF-8 → Base64URL tanpa padding
+ * Checksum: calculated ONLY from Base64URL payload using reflected CRC polynomial 0xA001
  */
 export function generateRequestCodeV2(params: {
   name: string;
@@ -103,16 +106,19 @@ export function generateRequestCodeV2(params: {
     ...(params.notes ? { notes: params.notes.trim() } : {}),
   };
 
-  const canonical = canonicalizeJson(payload);
-  const base64UrlPayload = Buffer.from(canonical, 'utf-8').toString('base64url');
-  const crc = crc16Ccitt(base64UrlPayload);
+  // Section 4.2: JSON.stringify → UTF-8 → Base64URL without padding
+  const rawJson = JSON.stringify(payload);
+  const base64UrlPayload = Buffer.from(rawJson, 'utf-8').toString('base64url');
+  // Section 4.3 & 4.4: Checksum from Base64URL string
+  const checksum = calculateChecksum(base64UrlPayload);
 
-  const requestCode = `ALCO-REQ-v2.${base64UrlPayload}.${crc}`;
+  // Section 4.5: ALCO-REQ-v2.<BASE64URL_PAYLOAD>.<CHECKSUM>
+  const requestCode = `ALCO-REQ-v2.${base64UrlPayload}.${checksum}`;
   return { requestCode, payload };
 }
 
 /**
- * Fail-closed decoder & validator for Request Code v2 (Section 11)
+ * Fail-closed decoder & validator for Request Code v2 (ALCO LICENSE STANDARD v1.0 Section 4 & 5)
  */
 export function parseAndValidateRequestCodeV2(code: string): {
   valid: boolean;
@@ -125,15 +131,15 @@ export function parseAndValidateRequestCodeV2(code: string): {
 
   const parts = code.trim().split('.');
   if (parts.length !== 3 || parts[0] !== 'ALCO-REQ-v2') {
-    return { valid: false, error: 'Malformed Request Code format (must be ALCO-REQ-v2.<PAYLOAD>.<CRC16>)' };
+    return { valid: false, error: 'Malformed Request Code format (must be ALCO-REQ-v2.<PAYLOAD>.<CHECKSUM>)' };
   }
 
-  const [, base64Payload, crcReceived] = parts;
+  const [, base64Payload, checksumReceived] = parts;
 
-  // CRC16 Check (Section 10 & 11)
-  const expectedCrc = crc16Ccitt(base64Payload);
-  if (crcReceived.toUpperCase() !== expectedCrc.toUpperCase()) {
-    return { valid: false, error: 'Request Code CRC16 checksum mismatch (corrupted data)' };
+  // Checksum Check (Section 4.3 & 4.4)
+  const expectedChecksum = calculateChecksum(base64Payload);
+  if (checksumReceived.toUpperCase() !== expectedChecksum.toUpperCase()) {
+    return { valid: false, error: `Request Code checksum mismatch (received: ${checksumReceived}, expected: ${expectedChecksum})` };
   }
 
   try {

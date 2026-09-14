@@ -20,21 +20,27 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
-function crc16Ccitt(str) {
+/**
+ * ALCO LICENSE STANDARD v1.0 - Section 4.4: Official Checksum Algorithm
+ * Standard Reflected CRC with polynomial 0xA001, initial value 0xFFFF.
+ * Matches `calculateChecksum()` in official ALCO License Generator request-code.ts.
+ */
+function calculateChecksum(input) {
   let crc = 0xffff;
-  for (let i = 0; i < str.length; i++) {
-    const byte = str.charCodeAt(i) & 0xff;
-    crc ^= byte << 8;
+  for (let i = 0; i < input.length; i++) {
+    crc ^= input.charCodeAt(i) & 0xff;
     for (let j = 0; j < 8; j++) {
-      if ((crc & 0x8000) !== 0) {
-        crc = ((crc << 1) ^ 0x1021) & 0xffff;
+      if ((crc & 1) !== 0) {
+        crc = (crc >>> 1) ^ 0xa001;
       } else {
-        crc = (crc << 1) & 0xffff;
+        crc = crc >>> 1;
       }
     }
   }
-  return crc.toString(16).toUpperCase().padStart(4, '0');
+  return (crc & 0xffff).toString(16).toUpperCase().padStart(4, '0');
 }
+
+const crc16Ccitt = calculateChecksum;
 
 function canonicalizeJson(obj) {
   if (obj === null || typeof obj !== 'object') {
