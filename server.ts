@@ -38,19 +38,20 @@ dotenv.config();
 const app = express();
 
 const DEFAULT_DEV_PORT = 3104;
-const DEFAULT_PROD_PORT = 3000;
 
 function resolveServerPort(): number {
   const portArgIndex = process.argv.indexOf('--port');
   if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
     const parsed = Number(process.argv[portArgIndex + 1]);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
   }
   if (process.env.PORT) {
     const parsed = Number(process.env.PORT);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
   }
-  return process.env.NODE_ENV === 'production' ? DEFAULT_PROD_PORT : DEFAULT_DEV_PORT;
+  // In development: default to fixed 3104.
+  // In production without explicit port: bind to 0 (dynamic OS-allocated free port).
+  return process.env.NODE_ENV === 'production' ? 0 : DEFAULT_DEV_PORT;
 }
 
 const PORT = resolveServerPort();
@@ -1737,8 +1738,10 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
-    console.log(`Alco Auto Motion server running at http://${HOST}:${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    const address = server.address();
+    const actualPort = address && typeof address === 'object' ? address.port : PORT;
+    console.log(`Alco Auto Motion server running at http://${HOST}:${actualPort}`);
   });
 }
 

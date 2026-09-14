@@ -9,8 +9,7 @@ const fs = require('fs');
 let mainWindow = null;
 let serverProcess = null;
 const DEFAULT_DEV_PORT = 3104;
-const DEFAULT_PROD_PORT = 3000;
-let serverPort = Number(process.env.PORT) || (app.isPackaged ? DEFAULT_PROD_PORT : DEFAULT_DEV_PORT);
+let serverPort = !app.isPackaged ? (Number(process.env.PORT) || DEFAULT_DEV_PORT) : 0;
 let serverLogs = [];
 const MAX_LOG_LINES = 50;
 
@@ -63,6 +62,33 @@ async function findAvailablePort(startPort) {
     port++;
   }
   return startPort;
+}
+
+/**
+ * Allocate a dynamic free localhost port from the operating system
+ */
+function findFreeLocalhostPort() {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.once('error', () => {
+      // Fallback: search in dynamic private port range
+      const randomStart = 40000 + Math.floor(Math.random() * 15000);
+      findAvailablePort(randomStart).then(resolve);
+    });
+    srv.listen(0, '127.0.0.1', () => {
+      const address = srv.address();
+      const port = address && typeof address === 'object' ? address.port : 0;
+      srv.close(() => {
+        if (port > 0) {
+          resolve(port);
+        } else {
+          const randomStart = 40000 + Math.floor(Math.random() * 15000);
+          findAvailablePort(randomStart).then(resolve);
+        }
+      });
+    });
+  });
 }
 
 /**
@@ -155,18 +181,25 @@ function resolveServerScript() {
  * Start the local Express server child process
  */
 async function startLocalServer() {
-  // If a server is already running and healthy on target port (e.g. dev server), reuse it
-  const alreadyHealthy = await checkServerHealth(serverPort);
-  if (alreadyHealthy) {
-    console.log(`[Electron] Reusing existing healthy server on 127.0.0.1:${serverPort}`);
-    return true;
-  }
-
-  // Find an available port if default port is in use by another app
-  const portInUse = await checkPortInUse(serverPort);
-  if (portInUse) {
-    serverPort = await findAvailablePort(serverPort + 1);
-    console.log(`[Electron] Port 3000 busy; switching to port ${serverPort}`);
+  if (!app.isPackaged) {
+    // Development mode: connect to existing dev server on fixed port 3104
+    serverPort = Number(process.env.PORT) || DEFAULT_DEV_PORT;
+    const alreadyHealthy = await checkServerHealth(serverPort);
+    if (alreadyHealthy) {
+      console.log(`[Electron] Connected to existing development server on 127.0.0.1:${serverPort}`);
+      return true;
+    }
+  } else {
+    // Production mode: allocate a dynamic free localhost port
+    // Never use fixed port 3000 and never blindly reuse unknown servers
+    if (process.env.PORT && !isNaN(Number(process.env.PORT)) && Number(process.env.PORT) > 0) {
+      const explicitPort = Number(process.env.PORT);
+      const inUse = await checkPortInUse(explicitPort);
+      serverPort = inUse ? await findFreeLocalhostPort() : explicitPort;
+    } else {
+      serverPort = await findFreeLocalhostPort();
+    }
+    console.log(`[Electron] Production dynamic port allocated: ${serverPort}`);
   }
 
   const serverScript = resolveServerScript();
@@ -193,7 +226,7 @@ async function startLocalServer() {
   console.log(`[Electron] Spawning server process: ${serverScript} on port ${serverPort}`);
 
   try {
-    serverProcess = child_process.fork(serverScript, [], {
+    serverProcess = child_process.fork(serverScript, ['--port', String(serverPort)], {
       env,
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       cwd: app.isPackaged ? process.resourcesPath : path.join(__dirname, '..'),
