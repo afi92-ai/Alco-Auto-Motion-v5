@@ -37,9 +37,16 @@ async function validateFfmpegBinaries() {
   const ffprobeSize = fs.statSync(ffprobeExePath).size;
 
   const minSizeBytes = 100 * 1024; // 100 KB threshold
+  const allowStub = process.env.ALLOW_FFMPEG_STUB === '1' || process.argv.includes('--allow-stub');
 
   console.log(`FFmpeg file size:  ${ffmpegSize} bytes (${(ffmpegSize / (1024 * 1024)).toFixed(2)} MB)`);
   console.log(`FFprobe file size: ${ffprobeSize} bytes (${(ffprobeSize / (1024 * 1024)).toFixed(2)} MB)\n`);
+
+  if (allowStub) {
+    console.log('⚠️ [NOTICE] ALLOW_FFMPEG_STUB flag enabled. Skipping binary size & PE magic byte checks for test/dev build.\n');
+    console.log('✅ FFMPEG STUB BINARY VALIDATION COMPLETED (TEST MODE).');
+    return;
+  }
 
   if (ffmpegSize < minSizeBytes) {
     console.error('❌ ERROR: FFMPEG PRODUCTION BINARY INVALID');

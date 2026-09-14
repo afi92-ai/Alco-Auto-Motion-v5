@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.4 - License System Implementation
+ * ALCO APP STANDARD v2.5 - License System Implementation
  * Master Protocol for Aladzan Corpora Ecosystem
  *
  * Implements:
@@ -8,8 +8,11 @@
  * - Section 12: License Payload v1.0 Schema Validation
  * - Section 13: Deterministic/Canonical JSON Representation
  * - Section 14: Ed25519 Signature Verification with Authority Public Key
- * - Section 15: Local Fail-Closed Verification
- * - Section 16 & 17: App ID & Hardware Device ID Binding
+ * - Section 14A: Strict License Wire Format Contract (128 HEX chars signature)
+ * - Section 15: Local License Verification (Fail-Closed)
+ * - Section 15A: Startup License Gate (Mandatory)
+ * - Section 15B: License Activation UX Flow
+ * - Section 16 & 17: Strict App & Device ID Binding
  * - Section 19 & 20: Persistent User Data Storage Across Updates
  * - Section 23: Diagnostic Logging without Secrets Leak
  */
@@ -22,6 +25,8 @@ import {
   ALCO_APP_ID,
   ALCO_APP_ALIASES,
   ALCO_AUTHORITY_PUBLIC_KEY,
+} from '../config/alcoAppConfig.ts';
+import type {
   AlcoLicensePayloadV1,
   AlcoRequestCodeV2Payload,
   AlcoLicenseStatus,
@@ -183,26 +188,60 @@ function getAuthorityKeyObject(): crypto.KeyObject {
 }
 
 /**
- * Verify Ed25519 Digital Signature on Canonical License Payload (Section 14 & 15)
+ * Verify Ed25519 Digital Signature on Canonical License Payload (Section 14 & 14A)
+ * Wire Format Contract (Standard v2.5 Section 14A):
+ * - algorithm: Ed25519
+ * - signature: 64 bytes
+ * - wire representation: HEX
+ * - length: exactly 128 hexadecimal characters
+ * - mandatory: reject signature with encoding or length that does not match exactly
  */
-function verifyEd25519Signature(canonicalData: string, signatureBase64Url: string): boolean {
+export function verifyEd25519Signature(
+  canonicalData: string,
+  signatureHex: string
+): { valid: boolean; error?: string } {
   try {
-    const keyObject = getAuthorityKeyObject();
-    const signatureBytes = Buffer.from(signatureBase64Url, 'base64url');
-    if (signatureBytes.length !== 64) {
-      return false;
+    if (!signatureHex || typeof signatureHex !== 'string') {
+      return { valid: false, error: 'Signature is missing or empty' };
     }
+
+    const cleanHex = signatureHex.trim();
+
+    // Section 14A: Wire representation MUST be HEX, exactly 128 hexadecimal characters
+    if (!/^[0-9a-fA-F]{128}$/.test(cleanHex)) {
+      return {
+        valid: false,
+        error: `Invalid signature wire format: ALCO License Standard v2.5 Section 14A requires exactly 128 hex characters (received ${cleanHex.length} chars)`,
+      };
+    }
+
+    const keyObject = getAuthorityKeyObject();
+    const signatureBytes = Buffer.from(cleanHex, 'hex');
+    if (signatureBytes.length !== 64) {
+      return { valid: false, error: 'Invalid signature length: expected 64 bytes' };
+    }
+
     const dataBytes = Buffer.from(canonicalData, 'utf-8');
-    return crypto.verify(null, dataBytes, keyObject, signatureBytes);
-  } catch (e) {
+    const isSigValid = crypto.verify(null, dataBytes, keyObject, signatureBytes);
+
+    if (!isSigValid) {
+      return {
+        valid: false,
+        error: 'Digital signature invalid: License Code was not signed by official ALCO Authority Private Key',
+      };
+    }
+
+    return { valid: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.error('[ALCO License] Signature verification failure:', e);
-    return false;
+    return { valid: false, error: `Signature verification failed: ${msg}` };
   }
 }
 
 /**
- * Official ALCO License Code Local Verification (Section 15)
- * Format: ALCO-LIC-v1.<BASE64URL_PAYLOAD>.<BASE64URL_SIGNATURE>
+ * Official ALCO License Code Local Verification (Section 14A & 15)
+ * Wire Format: ALCO-LIC-v1.<BASE64URL_CANONICAL_PAYLOAD>.<SIGNATURE_HEX>
  * Fail-Closed: any discrepancy or validation failure rejects the license.
  */
 export function verifyLicenseCode(
@@ -215,10 +254,13 @@ export function verifyLicenseCode(
 
   const parts = licenseCode.trim().split('.');
   if (parts.length !== 3 || parts[0] !== 'ALCO-LIC-v1') {
-    return { valid: false, error: 'Invalid License Code format (must be ALCO-LIC-v1.<PAYLOAD>.<SIGNATURE>)' };
+    return {
+      valid: false,
+      error: 'Invalid License Code format (must be ALCO-LIC-v1.<BASE64URL_PAYLOAD>.<SIGNATURE_HEX>)',
+    };
   }
 
-  const [, base64Payload, signatureBase64Url] = parts;
+  const [, base64Payload, signatureHex] = parts;
 
   let payload: AlcoLicensePayloadV1;
   try {
@@ -282,14 +324,14 @@ export function verifyLicenseCode(
     }
   }
 
-  // 5. Verify Ed25519 Signature against Authority Public Key (Section 14 & 15)
+  // 5. Verify Ed25519 Signature against Authority Public Key (Section 14, 14A & 15)
   const canonicalString = canonicalizeJson(payload);
-  const signatureOk = verifyEd25519Signature(canonicalString, signatureBase64Url);
+  const sigResult = verifyEd25519Signature(canonicalString, signatureHex);
 
-  if (!signatureOk) {
+  if (!sigResult.valid) {
     return {
       valid: false,
-      error: 'Digital signature invalid: License Code was not signed by official ALCO Authority Private Key',
+      error: sigResult.error || 'Digital signature invalid: License Code was not signed by official ALCO Authority Private Key',
     };
   }
 

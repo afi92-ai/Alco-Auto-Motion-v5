@@ -93,7 +93,7 @@ function findFreeLocalhostPort() {
 
 /**
  * Query /api/health to verify if server is alive, responding, and proves official app identity.
- * ALCO APP STANDARD v2.4 Section 5A:
+ * ALCO APP STANDARD v2.5 Section 5A:
  * "health check HTTP 200 saja TIDAK cukup; health response harus membuktikan identitas
  * aplikasi yang benar, misalnya app: 'alco-auto-motion'; jika response berasal dari
  * aplikasi lain, jangan reuse server tersebut."
@@ -472,6 +472,10 @@ function renderErrorHtml(port, errorDetail, logs) {
  * Create and configure BrowserWindow
  */
 function createMainWindow() {
+  const iconPath = fs.existsSync(path.join(__dirname, '../build/icon.ico'))
+    ? path.join(__dirname, '../build/icon.ico')
+    : path.join(__dirname, '../public/icon.ico');
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -480,6 +484,7 @@ function createMainWindow() {
     show: false,
     backgroundColor: '#0b0f19',
     title: 'ALCO Auto Motion',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

@@ -248,7 +248,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase ${
                   licenseStatus?.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-blue-500/20 text-blue-300'
                 }`}>
-                  {licenseStatus?.active ? 'OK' : 'STD v2.4'}
+                  {licenseStatus?.active ? 'OK' : 'STD v2.5'}
                 </span>
               </div>
             )}

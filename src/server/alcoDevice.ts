@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.4 - Device Identity Module (Section 9)
+ * ALCO APP STANDARD v2.5 - Device Identity Module (Section 9)
  * Official Hardware-Bound Device ID Generator & Validator
  * Format: ALCO-DEV-XXXX-XXXX-XXXX
  */

@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.4 - Application Configuration & Identity
+ * ALCO APP STANDARD v2.5 - Application Configuration & Identity
  * Master Standard for Aladzan Corpora Ecosystem
  */
 

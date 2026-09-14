@@ -178,7 +178,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                   {isGate && !isActivated ? 'ALCO License Gate' : 'ALCO License Center'}
                 </h2>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  Standard v2.4
+                  Standard v2.5
                 </span>
               </div>
               <p className="text-xs text-[var(--muted-foreground)]">
@@ -198,7 +198,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
           )}
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs (3 Stages Standard v2.5) */}
         <div className="flex border-b border-[var(--border)] bg-[var(--muted)]/40 px-6 pt-2">
           <button
             onClick={() => setActiveSubTab('status')}
@@ -220,7 +220,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
             }`}
           >
             <Laptop className="w-3.5 h-3.5" />
-            <span>Request Code v2</span>
+            <span>Tahap 1 & 2: Request Code v2</span>
           </button>
           <button
             onClick={() => setActiveSubTab('activate')}
@@ -231,7 +231,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
             }`}
           >
             <Key className="w-3.5 h-3.5" />
-            <span>Aktivasi Kode</span>
+            <span>Tahap 3: Aktivasi Lisensi</span>
           </button>
         </div>
 
@@ -301,7 +301,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                   {licenseStatus?.deviceId || 'Memuat...'}
                 </div>
                 <p className="text-[11px] text-[var(--muted-foreground)] leading-relaxed">
-                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.4.
+                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.5.
                 </p>
               </div>
 
@@ -348,18 +348,24 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                     className="alco-btn alco-btn-primary text-xs h-9 px-4 font-bold flex items-center gap-1.5"
                   >
                     <Key className="w-3.5 h-3.5" />
-                    <span>Aktivasi Sekarang</span>
+                    <span>Lanjut ke Aktivasi</span>
                   </button>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 2: REQUEST CODE v2 */}
+          {/* TAB 2: REQUEST CODE v2 (Tahap 1 & 2) */}
           {activeSubTab === 'request' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="text-xs text-[var(--muted-foreground)] leading-relaxed">
-                Buat <strong>Request Code v2</strong> untuk dikirimkan kepada Owner / Administrator ALCO untuk penerbitan lisensi resmi.
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+                <div className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                  <Laptop className="w-3.5 h-3.5" />
+                  Tahap 1 — Buat Request Code
+                </div>
+                <p className="text-[11px] text-[var(--muted-foreground)] mt-1">
+                  Lengkapi nama pemohon dan email terdaftar untuk menghasilkan Request Code v2 resmi bertanda Device ID perangkat ini.
+                </p>
               </div>
 
               {reqError && (
@@ -424,28 +430,56 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                 </button>
               </form>
 
-              {/* Generated Result */}
+              {/* Generated Result (Tahap 2: Dapatkan License Code) */}
               {generatedRequestCode && (
-                <div className="mt-4 p-4 bg-[var(--secondary)]/40 border border-blue-500/30 rounded-xl space-y-2 animate-fade-in">
+                <div className="mt-4 p-4 bg-[var(--secondary)]/50 border border-blue-500/30 rounded-xl space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
-                      Request Code v2 Berhasil Dibuat
-                    </span>
+                    <div>
+                      <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />
+                        Tahap 2 — Dapatkan License Code
+                      </span>
+                      <span className="text-[11px] text-[var(--muted-foreground)]">
+                        Request Code v2 siap disalin
+                      </span>
+                    </div>
                     <button
                       onClick={() => copyToClipboard(generatedRequestCode, 'req')}
-                      className="alco-btn alco-btn-primary text-[11px] h-7 px-3 flex items-center gap-1"
+                      className="alco-btn alco-btn-primary text-xs h-8 px-3 flex items-center gap-1.5 shadow-sm font-semibold"
                     >
-                      {copiedReqCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedReqCode ? 'Tersalin' : 'Salin Kode'}</span>
+                      {copiedReqCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedReqCode ? 'Tersalin' : 'Salin Request Code'}</span>
                     </button>
                   </div>
+
                   <div className="p-2.5 bg-[var(--card)] rounded-lg border border-[var(--border)] font-mono text-[11px] text-[var(--fg-app)] break-all max-h-28 overflow-y-auto alco-scrollbar select-all">
                     {generatedRequestCode}
                   </div>
-                  <p className="text-[11px] text-[var(--muted-foreground)]">
-                    Kirimkan kode ini kepada Owner / Administrator ALCO untuk diterbitkan License Code resmi.
-                  </p>
+
+                  {/* Mandatory Section 15B Instruction Banner */}
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/25 rounded-lg space-y-2">
+                    <p className="text-xs text-[var(--fg-app)] leading-relaxed font-medium">
+                      {copiedReqCode ? (
+                        <span className="text-emerald-400 font-bold block mb-1">
+                          ✓ Request Code berhasil disalin ke clipboard!
+                        </span>
+                      ) : null}
+                      Request Code berhasil disalin. Langkah berikutnya: kirim Request Code kepada Admin ALCO untuk mendapatkan License Code. Setelah menerima License Code, kembali ke halaman ini dan lanjutkan ke tahap Aktivasi.
+                    </p>
+
+                    <div className="pt-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-[var(--muted-foreground)]">
+                        Sudah menerima License Code dari Admin?
+                      </span>
+                      <button
+                        onClick={() => setActiveSubTab('activate')}
+                        className="alco-btn alco-btn-primary text-xs h-7 px-3 flex items-center gap-1 font-bold"
+                      >
+                        <Key className="w-3 h-3" />
+                        <span>Lanjut ke Tahap 3: Aktivasi</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -454,8 +488,14 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
           {/* TAB 3: ACTIVATE LICENSE */}
           {activeSubTab === 'activate' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="text-xs text-[var(--muted-foreground)] leading-relaxed">
-                Tempelkan <strong>License Code</strong> yang diterbitkan oleh ALCO License Generator resmi (dimulai dengan <code>ALCO-LIC-v1...</code>).
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5" />
+                  Tahap 3 — Aktivasi Lisensi
+                </div>
+                <p className="text-[11px] text-[var(--muted-foreground)] mt-1">
+                  Tempelkan <strong>License Code</strong> yang Anda terima dari ALCO License Generator resmi (format <code>ALCO-LIC-v1...</code> dengan wire signature 128 karakter HEX).
+                </p>
               </div>
 
               {activationError && (
@@ -484,7 +524,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                     required
                     value={licenseInput}
                     onChange={(e) => setLicenseInput(e.target.value)}
-                    placeholder="ALCO-LIC-v1.eyJsaWNlbnNlVmVyc2lvbiI6IjEuMCIs..."
+                    placeholder="ALCO-LIC-v1.eyJsaWNlbnNlVmVyc2lvbiI6IjEuMCIs...<128 HEX SIGNATURE>"
                     className="alco-control w-full p-2.5 text-xs font-mono resize-none leading-relaxed"
                   />
                 </div>
@@ -495,7 +535,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                     onClick={() => setActiveSubTab('request')}
                     className="text-xs text-blue-400 hover:underline font-medium"
                   >
-                    Belum punya kode? Buat Request Code
+                    ← Belum punya kode? Buat Request Code
                   </button>
 
                   <button
@@ -508,7 +548,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                     ) : (
                       <Key className="w-3.5 h-3.5" />
                     )}
-                    <span>Verifikasi & Aktivasi</span>
+                    <span>Aktifkan Lisensi</span>
                   </button>
                 </div>
               </form>

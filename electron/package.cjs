@@ -29,6 +29,7 @@ module.exports = {
     'dist/**/*',
   ],
   win: {
+    icon: 'build/icon.ico',
     target: [
       {
         target: 'nsis',
@@ -44,5 +45,7 @@ module.exports = {
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     shortcutName: 'ALCO Auto Motion',
+    installerIcon: 'build/icon.ico',
+    uninstallerIcon: 'build/icon.ico',
   },
 };
