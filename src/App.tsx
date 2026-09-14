@@ -182,7 +182,7 @@ export default function App() {
   const activeVideoFile = videoFile || uploadedFile;
 
   // ============================================================================
-  // ALCO APP STANDARD v2.5 - Section 15A: Startup License Gate (Mandatory)
+  // ALCO APP STANDARD v2.6 - Section 15A: Startup License Gate (Mandatory)
   // App Start → Load Stored License → Verify Signature → Match App ID/Device ID
   // → Check Expiration → Decide Access
   // Fresh Install + No License → Activation Screen Only (BLOKIR akses workspace)
@@ -204,7 +204,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-blue-400 font-mono mt-1">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>ALCO License Gate v2.5</span>
+            <span>ALCO License Gate v2.6</span>
           </div>
         </div>
       </div>
@@ -356,7 +356,7 @@ export default function App() {
         />
       )}
 
-      {/* Official ALCO App Standard v2.5 License Modal */}
+      {/* Official ALCO App Standard v2.6 License Modal */}
       <AlcoLicenseModal
         isOpen={isLicenseModalOpen}
         onClose={() => setIsLicenseModalOpen(false)}

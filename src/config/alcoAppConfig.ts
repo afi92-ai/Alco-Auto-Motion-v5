@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.5 - Application Configuration & Identity
+ * ALCO APP STANDARD v2.6 - Application Configuration & Identity
  * Master Standard for Aladzan Corpora Ecosystem
  */
 
@@ -12,18 +12,20 @@ export const ALCO_EXECUTABLE_NAME = 'ALCO Auto Motion.exe';
 export const ALCO_ECOSYSTEM_NAMESPACE = 'alco.corpora.ecosystem.device.v2';
 
 /**
- * Official Authority Public Key (Ed25519 SPKI PEM)
- * Used by ALCO App to verify signed License Codes locally (fail-closed).
- * In accordance with Section 14:
- * Private Key is held strictly by Owner / ALCO License Generator.
- * Distributed app only contains this Authority Public Key.
+ * Official ALCO Authority Public Key (Section 14B - Hard Contract)
+ * Official Ed25519 Raw Public Key HEX:
+ * 7a8e99b9ba45bc9f8847bc9fc4952a87b7fa22a3b0c09a5b22ed939de0ed5162
+ * Fingerprint: 7A8E99B9...E0ED5162
  *
- * Can be overridden via environment variable ALCO_AUTHORITY_PUBLIC_KEY if needed.
+ * Mandatory: Key material MUST be identical to this official key.
+ * Private Key is held strictly by Owner / ALCO License Generator.
  */
+export const ALCO_OFFICIAL_AUTHORITY_PUBLIC_KEY_HEX =
+  '7a8e99b9ba45bc9f8847bc9fc4952a87b7fa22a3b0c09a5b22ed939de0ed5162';
+
 export const ALCO_AUTHORITY_PUBLIC_KEY =
-  process.env.ALCO_AUTHORITY_PUBLIC_KEY ||
   `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAD3T1AkSZfqctSKS94+Fh3f7p8L2RbE04SWawdDt1jXc=
+MCowBQYDK2VwAyEAeo6ZubpFvJ+IR7yfxJUqh7f6IqOwwJpbIu2TneDtUWI=
 -----END PUBLIC KEY-----`;
 
 export type AlcoPlan = 'starter' | 'pro' | 'enterprise' | 'custom';

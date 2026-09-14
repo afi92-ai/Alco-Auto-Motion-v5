@@ -1,5 +1,5 @@
 /**
- * ALCO APP STANDARD v2.5 - License System Implementation
+ * ALCO APP STANDARD v2.6 - License System Implementation
  * Master Protocol for Aladzan Corpora Ecosystem
  *
  * Implements:
@@ -9,6 +9,7 @@
  * - Section 13: Deterministic/Canonical JSON Representation
  * - Section 14: Ed25519 Signature Verification with Authority Public Key
  * - Section 14A: Strict License Wire Format Contract (128 HEX chars signature)
+ * - Section 14B: Official ALCO Authority Public Key Hard Contract
  * - Section 15: Local License Verification (Fail-Closed)
  * - Section 15A: Startup License Gate (Mandatory)
  * - Section 15B: License Activation UX Flow
@@ -25,6 +26,7 @@ import {
   ALCO_APP_ID,
   ALCO_APP_ALIASES,
   ALCO_AUTHORITY_PUBLIC_KEY,
+  ALCO_OFFICIAL_AUTHORITY_PUBLIC_KEY_HEX,
 } from '../config/alcoAppConfig.ts';
 import type {
   AlcoLicensePayloadV1,
@@ -160,36 +162,50 @@ export function parseAndValidateRequestCodeV2(code: string): {
 
 /**
  * Load Ed25519 Public Key Object from SPKI PEM, Base64 raw or Hex
+ * Section 14B Hard Contract: Key material must be identical to Official Authority Public Key
  */
 function getAuthorityKeyObject(): crypto.KeyObject {
   const keyStr = ALCO_AUTHORITY_PUBLIC_KEY.trim();
 
+  let keyObj: crypto.KeyObject;
+
   // If PEM format
   if (keyStr.includes('-----BEGIN PUBLIC KEY-----')) {
-    return crypto.createPublicKey(keyStr);
-  }
-
-  // If 32-byte raw key in base64 or hex
-  let rawBytes: Buffer;
-  if (/^[0-9a-fA-F]{64}$/.test(keyStr)) {
-    rawBytes = Buffer.from(keyStr, 'hex');
+    keyObj = crypto.createPublicKey(keyStr);
   } else {
-    rawBytes = Buffer.from(keyStr, 'base64');
+    // If 32-byte raw key in base64 or hex
+    let rawBytes: Buffer;
+    if (/^[0-9a-fA-F]{64}$/.test(keyStr)) {
+      rawBytes = Buffer.from(keyStr, 'hex');
+    } else {
+      rawBytes = Buffer.from(keyStr, 'base64');
+    }
+
+    if (rawBytes.length === 32) {
+      // Prefix with standard ASN.1 / DER header for Ed25519 SPKI (12 bytes)
+      const derHeader = Buffer.from('302a300506032b6570032100', 'hex');
+      const fullDer = Buffer.concat([derHeader, rawBytes]);
+      keyObj = crypto.createPublicKey({ key: fullDer, format: 'der', type: 'spki' });
+    } else {
+      throw new Error('Unrecognized Authority Public Key format');
+    }
   }
 
-  if (rawBytes.length === 32) {
-    // Prefix with standard ASN.1 / DER header for Ed25519 SPKI (12 bytes)
-    const derHeader = Buffer.from('302a300506032b6570032100', 'hex');
-    const fullDer = Buffer.concat([derHeader, rawBytes]);
-    return crypto.createPublicKey({ key: fullDer, format: 'der', type: 'spki' });
+  // Section 14B: Release Gate - Key Material Consistency Check
+  const jwk = keyObj.export({ format: 'jwk' });
+  const rawHex = Buffer.from(jwk.x || '', 'base64url').toString('hex').toLowerCase();
+  if (rawHex !== ALCO_OFFICIAL_AUTHORITY_PUBLIC_KEY_HEX.toLowerCase()) {
+    throw new Error(
+      `ALCO Authority Public Key violation (Section 14B): embedded key ${rawHex} does not match official ALCO authority key ${ALCO_OFFICIAL_AUTHORITY_PUBLIC_KEY_HEX}`
+    );
   }
 
-  throw new Error('Unrecognized Authority Public Key format');
+  return keyObj;
 }
 
 /**
- * Verify Ed25519 Digital Signature on Canonical License Payload (Section 14 & 14A)
- * Wire Format Contract (Standard v2.5 Section 14A):
+ * Verify Ed25519 Digital Signature on Canonical License Payload (Section 14, 14A & 14B)
+ * Wire Format Contract (Standard v2.6 Section 14A):
  * - algorithm: Ed25519
  * - signature: 64 bytes
  * - wire representation: HEX
@@ -211,7 +227,7 @@ export function verifyEd25519Signature(
     if (!/^[0-9a-fA-F]{128}$/.test(cleanHex)) {
       return {
         valid: false,
-        error: `Invalid signature wire format: ALCO License Standard v2.5 Section 14A requires exactly 128 hex characters (received ${cleanHex.length} chars)`,
+        error: `Invalid signature wire format: ALCO License Standard v2.6 Section 14A requires exactly 128 hex characters (received ${cleanHex.length} chars)`,
       };
     }
 

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
  * ALCO Ecosystem - Authority License Generator & Inspection Tool
- * Standard v2.2 Compliance Tool for Owner / Release Engineering
+ * Standard v2.6 Compliance Tool for Owner / Release Engineering
+ *
+ * Implements:
+ * - Section 14A: 128 HEX chars wire signature format
+ * - Section 14B: Official ALCO Authority Public Key (7a8e99b9ba45bc9f8847bc9fc4952a87b7fa22a3b0c09a5b22ed939de0ed5162)
  *
  * NOTE: This tool is intended for Owner use to generate signed licenses
  * and is NOT included in client package distributions.
@@ -79,7 +83,7 @@ if (command === 'inspect') {
     const payload = JSON.parse(Buffer.from(b64, 'base64url').toString('utf-8'));
     const isHex128 = /^[0-9a-fA-F]{128}$/.test(sigHex);
     console.log('\n=== ALCO LICENSE CODE v1.0 ===');
-    console.log('Signature Wire Format (v2.5 Sec 14A):', isHex128 ? 'VALID 128 HEX CHARS ✅' : 'INVALID WIRE FORMAT ❌');
+    console.log('Signature Wire Format (v2.6 Sec 14A):', isHex128 ? 'VALID 128 HEX CHARS ✅' : 'INVALID WIRE FORMAT ❌');
     console.log('Signature length:', sigHex.length, 'chars (raw bytes:', isHex128 ? 64 : 'invalid', ')');
     console.log('Payload:', JSON.stringify(payload, null, 2));
   } else {
@@ -139,7 +143,7 @@ if (command === 'sign') {
     expiresAt: licenseType === 'lifetime' ? null : new Date(Date.now() + 365 * 86400000).toISOString(),
     metadata: {
       ecosystem: 'ALCO',
-      generatedBy: 'ALCO License Authority Tool v2.5',
+      generatedBy: 'ALCO License Authority Tool v2.6',
     },
   };
 
@@ -156,11 +160,11 @@ if (command === 'sign') {
   console.log('Type:', licenseType);
   console.log('Device ID:', deviceId);
   console.log('Customer:', licensePayload.customerName);
-  console.log('Signature Wire Format: EXACTLY 128 HEX CHARS (v2.5 Sec 14A)');
+  console.log('Signature Wire Format: EXACTLY 128 HEX CHARS (v2.6 Sec 14A)');
   process.exit(0);
 }
 
-console.log('ALCO License Tool v2.5');
+console.log('ALCO License Tool v2.6');
 console.log('Commands:');
 console.log('  node scripts/alco-license-tool.mjs keygen');
 console.log('  node scripts/alco-license-tool.mjs inspect <code-string>');

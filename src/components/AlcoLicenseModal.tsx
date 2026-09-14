@@ -178,7 +178,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                   {isGate && !isActivated ? 'ALCO License Gate' : 'ALCO License Center'}
                 </h2>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  Standard v2.5
+                  Standard v2.6
                 </span>
               </div>
               <p className="text-xs text-[var(--muted-foreground)]">
@@ -198,7 +198,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
           )}
         </div>
 
-        {/* Navigation Tabs (3 Stages Standard v2.5) */}
+        {/* Navigation Tabs (3 Stages Standard v2.6) */}
         <div className="flex border-b border-[var(--border)] bg-[var(--muted)]/40 px-6 pt-2">
           <button
             onClick={() => setActiveSubTab('status')}
@@ -301,7 +301,7 @@ export const AlcoLicenseModal: React.FC<AlcoLicenseModalProps> = ({
                   {licenseStatus?.deviceId || 'Memuat...'}
                 </div>
                 <p className="text-[11px] text-[var(--muted-foreground)] leading-relaxed">
-                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.5.
+                  Device ID dihitung secara stabil dari Windows MachineGUID & arsitektur perangkat sesuai Standar ALCO v2.6.
                 </p>
               </div>
 
