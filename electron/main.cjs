@@ -92,7 +92,11 @@ function findFreeLocalhostPort() {
 }
 
 /**
- * Query /api/health to verify if server is alive and responding
+ * Query /api/health to verify if server is alive, responding, and proves official app identity.
+ * ALCO APP STANDARD v2.2 Section 5A:
+ * "health check HTTP 200 saja TIDAK cukup; health response harus membuktikan identitas
+ * aplikasi yang benar, misalnya app: 'alco-auto-motion'; jika response berasal dari
+ * aplikasi lain, jangan reuse server tersebut."
  */
 function checkServerHealth(port, timeoutMs = 1500) {
   return new Promise((resolve) => {
@@ -104,11 +108,32 @@ function checkServerHealth(port, timeoutMs = 1500) {
         timeout: timeoutMs,
       },
       (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 400) {
-          resolve(true);
-        } else {
-          resolve(false);
+        if (res.statusCode < 200 || res.statusCode >= 400) {
+          return resolve(false);
         }
+
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            // Verify app identity matches ALCO Auto Motion
+            const isIdentityMatch =
+              data &&
+              data.status === 'ok' &&
+              (data.app === 'alco-auto-motion' ||
+                data.appId === 'alco-auto-motion' ||
+                data.app === 'com.alco.automotion' ||
+                data.appId === 'com.alco.automotion');
+
+            resolve(Boolean(isIdentityMatch));
+          } catch (_) {
+            resolve(false);
+          }
+        });
       }
     );
 

@@ -322,9 +322,16 @@ async function callGeminiWithFallback(
   throw lastError || new Error('All Gemini models exhausted');
 }
 
-// Health check
+// Health check with official app identity (ALCO APP STANDARD v2.2 Section 5A)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    app: ALCO_APP_ID,
+    appId: ALCO_APP_ID,
+    name: ALCO_APP_NAME,
+    version: ALCO_APP_VERSION,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ==========================================
