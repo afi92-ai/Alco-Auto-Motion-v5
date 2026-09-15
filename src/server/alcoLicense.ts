@@ -210,8 +210,8 @@ function getAuthorityKeyObject(): crypto.KeyObject {
 }
 
 /**
- * Verify Ed25519 Digital Signature on Canonical License Payload (Section 14, 14A & 14B)
- * Wire Format Contract (Standard v2.6 Section 14A):
+ * Verify Ed25519 Digital Signature on Canonical License Payload (ALCO LICENSE STANDARD v1.0 Section 6)
+ * Wire Format Contract (ALCO LICENSE STANDARD v1.0 Section 6):
  * - algorithm: Ed25519
  * - signature: 64 bytes
  * - wire representation: HEX
@@ -229,11 +229,11 @@ export function verifyEd25519Signature(
 
     const cleanHex = signatureHex.trim();
 
-    // Section 14A: Wire representation MUST be HEX, exactly 128 hexadecimal characters
+    // Section 6: Wire representation MUST be HEX, exactly 128 hexadecimal characters
     if (!/^[0-9a-fA-F]{128}$/.test(cleanHex)) {
       return {
         valid: false,
-        error: `Invalid signature wire format: ALCO License Standard v2.6 Section 14A requires exactly 128 hex characters (received ${cleanHex.length} chars)`,
+        error: `Invalid signature wire format: ALCO LICENSE STANDARD v1.0 Section 6 requires exactly 128 hex characters (received ${cleanHex.length} chars)`,
       };
     }
 

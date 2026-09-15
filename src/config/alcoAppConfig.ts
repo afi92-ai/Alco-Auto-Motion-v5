@@ -1,6 +1,6 @@
 /**
- * ALCO APP STANDARD v2.6 - Application Configuration & Identity
- * Master Standard for Aladzan Corpora Ecosystem
+ * ALCO APP STANDARD v2.8 & ALCO LICENSE STANDARD v1.0
+ * Master Standards for Aladzan Corpora Ecosystem
  */
 
 export const ALCO_APP_ID = 'alco-auto-motion';
@@ -12,7 +12,7 @@ export const ALCO_EXECUTABLE_NAME = 'ALCO Auto Motion.exe';
 export const ALCO_ECOSYSTEM_NAMESPACE = 'alco.corpora.ecosystem.device.v2';
 
 /**
- * Official ALCO Authority Public Key (Section 14B - Hard Contract)
+ * Official ALCO Authority Public Key (ALCO LICENSE STANDARD v1.0 Section 3 - Hard Contract)
  * Official Ed25519 Raw Public Key HEX:
  * 7a8e99b9ba45bc9f8847bc9fc4952a87b7fa22a3b0c09a5b22ed939de0ed5162
  * Fingerprint: 7A8E99B9...E0ED5162

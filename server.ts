@@ -321,7 +321,7 @@ async function callGeminiWithFallback(
   throw lastError || new Error('All Gemini models exhausted');
 }
 
-// Health check with official app identity (ALCO APP STANDARD v2.6 Section 5A)
+// Health check with official app identity (ALCO APP STANDARD v2.8 Section 4)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -334,7 +334,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==========================================
-// ALCO APP STANDARD v2.6 - Official Ecosystem Endpoints
+// ALCO APP STANDARD v2.8 - Official Ecosystem Endpoints
 // ==========================================
 
 // 1. ALCO Hub Application Discovery & Status (Section 6)
