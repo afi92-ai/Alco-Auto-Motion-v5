@@ -203,6 +203,26 @@ function resolveServerScript() {
 }
 
 /**
+ * Resolve path to the compiled production UI dist directory
+ * ALCO APP STANDARD v2.9: Production Resource Path Contract
+ */
+function resolveProductionDistDir() {
+  const candidates = [
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'dist'),
+    path.join(app.getAppPath(), 'dist'),
+    path.join(__dirname, '..', 'dist'),
+    path.join(process.resourcesPath, 'dist'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+  return candidates[0];
+}
+
+/**
  * Start the local Express server child process
  */
 async function startLocalServer() {
@@ -233,11 +253,16 @@ async function startLocalServer() {
     return false;
   }
 
+  // ALCO APP STANDARD v2.9: Resolve production UI dist path explicitly for child server
+  const distDir = resolveProductionDistDir();
+
   const env = {
     ...process.env,
     PORT: String(serverPort),
     HOST: '127.0.0.1',
     NODE_ENV: app.isPackaged ? 'production' : (process.env.NODE_ENV || 'production'),
+    ALCO_DIST_PATH: distDir,
+    DIST_PATH: distDir,
   };
 
   // Configure bundled FFmpeg paths if available

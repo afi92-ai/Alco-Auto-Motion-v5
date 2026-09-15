@@ -1728,7 +1728,99 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   next(err);
 });
 
-// Setup Vite middleware in development or static serving in production (ALCO APP STANDARD v2.6 Section 5B)
+/**
+ * ALCO APP STANDARD v2.9 — Production Resource Path Resolution
+ * Resolves the production UI dist directory and index.html across all execution contexts:
+ * - Development (tsx server.ts)
+ * - Compiled standalone server (node dist/server.cjs)
+ * - Electron win-unpacked / portable
+ * - Installed Windows Application (NSIS)
+ * - Launched from shortcut / arbitrary working directory
+ * - Launched via ALCO Hub
+ */
+export function resolveProductionResourcePaths(): {
+  distPath: string;
+  indexPath: string;
+  distExists: boolean;
+  indexExists: boolean;
+} {
+  const candidateDirs: string[] = [];
+
+  // 1. Explicit environment variables passed by Electron main process or wrapper
+  if (process.env.ALCO_DIST_PATH) {
+    candidateDirs.push(path.resolve(process.env.ALCO_DIST_PATH));
+  }
+  if (process.env.DIST_PATH) {
+    candidateDirs.push(path.resolve(process.env.DIST_PATH));
+  }
+
+  // 2. Directory relative to the compiled server.cjs (__dirname)
+  // When compiled to dist/server.cjs, __dirname IS the dist directory
+  if (typeof __dirname !== 'undefined') {
+    candidateDirs.push(path.resolve(__dirname));
+    candidateDirs.push(path.resolve(__dirname, 'dist'));
+    candidateDirs.push(path.resolve(__dirname, '..', 'dist'));
+    candidateDirs.push(path.resolve(__dirname, '..'));
+  }
+
+  // 3. Electron resources paths if running inside packaged Electron
+  const procWithResources = process as unknown as { resourcesPath?: string };
+  if (procWithResources.resourcesPath) {
+    candidateDirs.push(path.resolve(procWithResources.resourcesPath, 'app.asar.unpacked', 'dist'));
+    candidateDirs.push(path.resolve(procWithResources.resourcesPath, 'app.asar', 'dist'));
+    candidateDirs.push(path.resolve(procWithResources.resourcesPath, 'app', 'dist'));
+    candidateDirs.push(path.resolve(procWithResources.resourcesPath, 'dist'));
+  }
+
+  // 4. Working directory fallbacks
+  const cwd = process.cwd();
+  candidateDirs.push(path.resolve(cwd, 'dist'));
+  candidateDirs.push(path.resolve(cwd));
+
+  // Find first candidate directory containing index.html
+  for (const dir of candidateDirs) {
+    try {
+      const testIndexPath = path.join(dir, 'index.html');
+      if (fs.existsSync(testIndexPath)) {
+        return {
+          distPath: dir,
+          indexPath: testIndexPath,
+          distExists: true,
+          indexExists: true,
+        };
+      }
+    } catch {
+      // Continue search on error
+    }
+  }
+
+  // If no candidate has index.html, find first candidate directory that exists
+  for (const dir of candidateDirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        return {
+          distPath: dir,
+          indexPath: path.join(dir, 'index.html'),
+          distExists: true,
+          indexExists: false,
+        };
+      }
+    } catch {
+      // Continue search on error
+    }
+  }
+
+  // Default fallback
+  const fallbackDist = path.resolve(cwd, 'dist');
+  return {
+    distPath: fallbackDist,
+    indexPath: path.join(fallbackDist, 'index.html'),
+    distExists: fs.existsSync(fallbackDist),
+    indexExists: fs.existsSync(path.join(fallbackDist, 'index.html')),
+  };
+}
+
+// Setup Vite middleware in development or static serving in production (ALCO APP STANDARD v2.9 Section 5)
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     // Dynamic import Vite ONLY when running in development mode
@@ -1739,10 +1831,64 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // ALCO APP STANDARD v2.9: Production Resource Path Contract
+    const { distPath, indexPath, distExists, indexExists } = resolveProductionResourcePaths();
+
+    console.log(`[Production UI]`);
+    console.log(`  distPath: ${distPath}`);
+    console.log(`  indexPath: ${indexPath}`);
+    console.log(`  distExists: ${distExists}`);
+    console.log(`  indexExists: ${indexExists}`);
+
+    if (distExists) {
+      app.use(express.static(distPath, {
+        index: 'index.html',
+        maxAge: '1d',
+      }));
+    }
+
+    // SPA fallback for non-API GET requests
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      // Strict guard: ensure /api/* routes are never served SPA HTML
+      if (req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/')) {
+        return res.status(404).json({
+          success: false,
+          error: `API endpoint tidak ditemukan: ${req.method} ${req.originalUrl}`,
+        });
+      }
+
+      if (indexExists && fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+
+      // Diagnostic error page if production UI build is missing
+      res.status(500).type('text/html').send(`
+        <!DOCTYPE html>
+        <html lang="id">
+        <head>
+          <meta charset="utf-8">
+          <title>ALCO Auto Motion — Production UI Error</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 40px; }
+            .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px; max-width: 640px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+            h1 { color: #f43f5e; font-size: 20px; margin-top: 0; }
+            code { background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-family: monospace; font-size: 13px; word-break: break-all; }
+            .meta { margin-top: 16px; font-size: 13px; color: #94a3b8; line-height: 1.8; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Production UI Resource Not Found</h1>
+            <p>Aplikasi tidak dapat menemukan file <code>index.html</code> pada lokasi build production.</p>
+            <div class="meta">
+              <div><strong>Resolved Dist Path:</strong> <code>${distPath}</code> (exists: ${distExists})</div>
+              <div><strong>Resolved Index Path:</strong> <code>${indexPath}</code> (exists: ${indexExists})</div>
+              <div style="margin-top: 12px;">Pastikan perintah <code>npm run build</code> telah dijalankan sebelum packaging aplikasi.</div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `);
     });
   }
 
